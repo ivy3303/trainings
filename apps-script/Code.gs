@@ -75,6 +75,9 @@ var MAX_EMAILS = 5;
 var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
 var GROUP_COLORS = { A: '#c6ebdc', B: '#fbd9b8', C: '#cbdcf9', D: '#efcff2', E: '#f8edb0' };
+// Colours of the summary mail, as on the page: the three mood dots and the block chip/strip.
+var MAIL_MOOD_COLORS = ['#f0746c', '#f1df8e', '#4fd09a'];
+var MAIL_CHIP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f4a3b8' };
 var COLOR_MORE = '#c8ecd3';
 var COLOR_LESS = '#f7c9c5';
 var COLOR_SAME = '#cddffa';
@@ -654,26 +657,23 @@ function buildSummary_(data, sheetName, before, files) {
   var shownDate = parts[2] + '.' + parts[1] + '.' + parts[0];
   var subject = 'Trening ' + sheetName + ' – ' + shownDate;
   var text = [subject, ''];
-  var html = ['<div style="font-family:Arial,sans-serif;color:#17212b;max-width:560px">',
-    '<h2 style="margin:0 0 12px">' + esc_(subject) + '</h2>'];
+  var blocks = [];
 
-  if (data.notes && String(data.notes).trim()) {
-    text.push('Notatka: ' + String(data.notes).trim(), '');
-    html.push('<p style="margin:0 0 14px"><i>' + esc_(String(data.notes).trim()) + '</i></p>');
+  var note = data.notes ? String(data.notes).trim() : '';
+  if (note) {
+    text.push('Notatka: ' + note, '');
+    blocks.push(mailCard_('', '<div style="font-size:15px;line-height:22px;color:#f4f6ff;font-style:italic">' + esc_(note) + '</div>', '#a9bcff'));
   }
 
-  var mood = WELLNESS.filter(function (item) { return data.wellness && data.wellness[item.key]; })
-    .map(function (item) { return item.mail + ' ' + data.wellness[item.key] + '/3'; });
-  if (mood.length) {
-    text.push('Samopoczucie: ' + mood.join(' · '), '');
-    html.push('<p style="margin:0 0 14px">Samopoczucie: <b>' + esc_(mood.join(' · ')) + '</b></p>');
-  }
-  var moodNote = data.wellness && data.wellness.note ? String(data.wellness.note).trim() : '';
-  if (moodNote) {
-    text.push('Uwagi do samopoczucia: ' + moodNote, '');
-    html.push('<p style="margin:0 0 14px"><i>Uwagi do samopoczucia: ' + esc_(moodNote) + '</i></p>');
-  }
+  var wellness = data.wellness || {};
+  var mood = WELLNESS.filter(function (item) { return wellness[item.key]; })
+    .map(function (item) { return item.mail + ' ' + wellness[item.key] + '/3'; });
+  var moodNote = wellness.note ? String(wellness.note).trim() : '';
+  if (mood.length) text.push('Samopoczucie: ' + mood.join(' · '), '');
+  if (moodNote) text.push('Uwagi do samopoczucia: ' + moodNote, '');
+  if (mood.length || moodNote) blocks.push(mailMood_(wellness, moodNote));
 
+  var sections = [];
   data.exercises.forEach(function (exercise) {
     var mode = exercise.mode === 'time' ? 'time' : 'reps';
     var code = normalizeCode_(exercise.code || exercise.group);
@@ -691,30 +691,94 @@ function buildSummary_(data, sheetName, before, files) {
       prevText = describeSets_(prev.mode, prevSets);
       diff = diffText_(summarize_(prev.mode, prevSets), summarize_(mode, sets));
     }
-    var title = (code ? code + '  ' : '') + String(exercise.name).trim();
-    text.push(title, '  ' + now + (prevText ? '   (poprzednio: ' + prevText + (diff ? ', ' + diff : ', bez zmian') + ')' : ''));
-    var line = '<b>' + esc_(now) + '</b>';
-    if (prevText) line += ' <span style="color:#6b7684">· poprzednio: ' + esc_(prevText) + '</span> ' + (diff ? diffHtml_(diff) : '<span style="color:#6b7684">bez zmian</span>');
-    html.push('<div style="margin:0 0 12px"><div style="font-weight:700">' + esc_(title) + '</div><div>' + line + '</div>');
-    if (exercise.note && String(exercise.note).trim()) {
-      text.push('  Uwaga: ' + String(exercise.note).trim());
-      html.push('<div style="color:#6b7684">Uwaga: ' + esc_(String(exercise.note).trim()) + '</div>');
-    }
+    var name = String(exercise.name).trim();
+    var remark = exercise.note ? String(exercise.note).trim() : '';
+    text.push((code ? code + '  ' : '') + name, '  ' + now + (prevText ? '   (poprzednio: ' + prevText + (diff ? ', ' + diff : ', bez zmian') + ')' : ''));
+    if (remark) text.push('  Uwaga: ' + remark);
     text.push('');
-    html.push('</div>');
+    // Neighbouring exercises of one block (A1, A2 …) share a single card.
+    var letter = code ? code.charAt(0) : '';
+    var last = sections[sections.length - 1];
+    var row = mailExercise_(code, name, now, prevText, diff, remark);
+    if (letter && last && last.letter === letter) last.rows.push(row);
+    else sections.push({ letter: letter, rows: [row] });
   });
+  sections.forEach(function (section) { blocks.push(mailSection_(section.letter, section.rows)); });
 
   if (files && files.length) {
     text.push('Zdjęcia i filmy:');
-    html.push('<div style="margin-top:6px"><b>Zdjęcia i filmy</b><ul style="margin:4px 0 0;padding-left:20px">');
-    files.forEach(function (file) {
-      text.push('- ' + file.name + ': ' + file.url);
-      html.push('<li><a href="' + esc_(file.url) + '">' + esc_(file.name) + '</a></li>');
-    });
-    html.push('</ul></div>');
+    files.forEach(function (file) { text.push('- ' + file.name + ': ' + file.url); });
+    blocks.push(mailMedia_(files));
   }
-  html.push('</div>');
-  return { subject: subject, text: text.join('\n'), html: html.join('') };
+
+  var count = data.exercises.length;
+  var counted = count + (count === 1 ? ' ćwiczenie' : count > 1 && count < 5 ? ' ćwiczenia' : ' ćwiczeń');
+  var pill = 'display:inline-block;padding:5px 14px;border-radius:999px;font-size:13px;line-height:18px;font-weight:700;';
+  var html = '<div style="background:#0b0f1f;background-image:radial-gradient(60% 38% at 8% 0%,rgba(124,92,255,.55),transparent 62%),radial-gradient(50% 36% at 100% 22%,rgba(0,205,210,.32),transparent 62%),radial-gradient(70% 45% at 40% 100%,rgba(255,92,150,.34),transparent 62%);padding:22px 10px;font-family:\'DM Sans\',Arial,Helvetica,sans-serif;color:#f4f6ff">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin:0 auto">' +
+    '<tr><td style="padding:6px 8px 18px">' +
+      '<div style="font-size:14px;color:#aab4d8">Treningi</div>' +
+      '<div style="font-size:36px;line-height:42px;font-weight:800;color:#ffffff;margin-top:2px">' + esc_(sheetName) + '</div>' +
+      '<div style="margin-top:12px">' +
+        '<span style="' + pill + 'background:#6c7dff;background-image:linear-gradient(135deg,#7c5cff,#33c6ff);color:#ffffff">' + esc_(shownDate) + '</span> ' +
+        '<span style="' + pill + 'border:1px solid #3a4268;border:1px solid rgba(255,255,255,.22);color:#dfe6ff">' + esc_(counted) + '</span>' +
+      '</div>' +
+    '</td></tr>' +
+    '<tr><td>' + blocks.join('') + '</td></tr>' +
+    '<tr><td align="center" style="padding:8px 0 2px;font-size:12px;color:#8590bd">Wysłano z formularza Treningi</td></tr>' +
+    '</table></div>';
+  return { subject: subject, text: text.join('\n'), html: html };
+}
+
+/** A frosted-glass card of the summary mail; accent = colour of the strip (and glow) on its left. */
+function mailCard_(title, body, accent) {
+  return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;background:#171c37;background:rgba(255,255,255,.085);border:1px solid #333a5e;border:1px solid rgba(255,255,255,.17);border-left:7px solid ' + accent + ';border-radius:24px;box-shadow:-6px 0 16px -8px ' + accent + '">' +
+    '<tr><td style="padding:14px 16px">' + (title || '') + body + '</td></tr></table>';
+}
+
+function mailMood_(wellness, remark) {
+  var cells = WELLNESS.map(function (item) {
+    var value = wellness[item.key];
+    var dot = value
+      ? '<div style="width:40px;height:40px;margin:0 auto;border-radius:50%;background:' + MAIL_MOOD_COLORS[value - 1] + ';box-shadow:0 0 16px ' + MAIL_MOOD_COLORS[value - 1] + '99"></div>'
+      : '<div style="width:36px;height:36px;margin:0 auto;border-radius:50%;border:2px dashed #5b6490"></div>';
+    return '<td align="center" width="33%" style="padding:2px 4px">' + dot +
+      '<div style="font-size:12px;color:#aab4d8;margin-top:8px">' + esc_(item.label) + '</div>' +
+      '<div style="font-size:14px;font-weight:700;color:#f4f6ff">' + (value ? esc_(item.words[value - 1]) : '–') + '</div></td>';
+  }).join('');
+  var body = '<div style="font-size:15px;font-weight:700;color:#f4f6ff;margin:0 0 10px">Samopoczucie</div>' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>' + cells + '</tr></table>';
+  if (remark) body += '<div style="margin-top:12px;padding-top:10px;border-top:1px solid #333a5e;border-top:1px solid rgba(255,255,255,.14);font-size:14px;line-height:20px;color:#c6cdee;font-style:italic">' + esc_(remark) + '</div>';
+  return mailCard_('', body, '#7c5cff');
+}
+
+/** One card per training block: its exercises one under another, split by thin lines. */
+function mailSection_(letter, rows) {
+  var divider = '<div style="height:1px;line-height:1px;font-size:1px;margin:14px 0;background:#333a5e;background:rgba(255,255,255,.14)">&nbsp;</div>';
+  return mailCard_('', rows.join(divider), MAIL_CHIP_COLORS[letter] || '#8e99c8');
+}
+
+/** One exercise inside a section card. */
+function mailExercise_(code, name, now, prevText, diff, remark) {
+  var color = MAIL_CHIP_COLORS[code.charAt(0)] || '#8e99c8';
+  var chip = code
+    ? '<span style="display:inline-block;background:' + color + ';border-radius:999px;padding:1px 10px;margin-right:8px;font-size:12px;line-height:20px;font-weight:700;color:#12162a">' + esc_(code) + '</span>'
+    : '';
+  var body = '<div style="font-size:16px;line-height:24px;font-weight:700;color:#f4f6ff">' + chip + esc_(name) + '</div>' +
+    '<div style="font-size:20px;line-height:28px;font-weight:800;color:#ffffff;margin-top:6px">' + esc_(now) + '</div>';
+  if (prevText || diff) {
+    body += '<div style="font-size:13px;line-height:24px;color:#aab4d8;margin-top:2px">' +
+      (prevText ? 'poprzednio: ' + esc_(prevText) : '') + (diff ? ' ' + diffHtml_(diff) : '') + '</div>';
+  }
+  if (remark) body += '<div style="margin-top:8px;font-size:13px;line-height:19px;color:#c6cdee;font-style:italic">' + esc_(remark) + '</div>';
+  return body;
+}
+
+function mailMedia_(files) {
+  var links = files.map(function (file) {
+    return '<a href="' + esc_(file.url) + '" style="display:inline-block;margin:0 6px 8px 0;padding:8px 14px;border:1.5px dashed #6f7fc0;border-radius:999px;color:#a9bcff;font-size:13px;font-weight:700;text-decoration:none">&#128247; ' + esc_(file.name) + '</a>';
+  }).join('');
+  return mailCard_('', '<div style="font-size:15px;font-weight:700;color:#f4f6ff;margin:0 0 8px">Zdjęcia i filmy</div>' + links, '#33c6ff');
 }
 
 function setWeight_(weight) {
@@ -771,8 +835,8 @@ function diffText_(before, now) {
 }
 
 function diffHtml_(text) {
-  var color = text.charAt(0) === '▲' ? '#17784a' : '#b83a2e';
-  return '<b style="color:' + color + '">' + esc_(text) + '</b>';
+  var up = text.charAt(0) === '▲';
+  return '<span style="display:inline-block;margin-left:2px;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:700;background:' + (up ? '#17503f' : '#5a2a35') + ';background:' + (up ? 'rgba(40,200,140,.22)' : 'rgba(255,90,90,.22)') + ';color:' + (up ? '#5ef0b0' : '#ff8a80') + '">' + esc_(text) + '</span>';
 }
 
 function esc_(value) {

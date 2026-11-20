@@ -322,6 +322,14 @@
   .notice { border-radius:18px; }
   .notice.warn { color:#dfe6ff; }
   .mood-scale button.on { background:var(--mc); color:#12162a; }
+  .check { display:flex; align-items:center; gap:14px; margin:0; font-size:1.05rem; font-weight:600; color:var(--text); cursor:pointer; }
+  .check input { position:absolute; opacity:0; width:1px; height:1px; padding:0; border:0; }
+  .check .box { flex:0 0 30px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:rgba(6,9,22,.5); border:1.5px solid rgba(169,188,255,.5); color:transparent; transition:background .2s, box-shadow .2s, color .2s, transform .15s; }
+  .check .box svg { width:18px; height:18px; }
+  .check input:checked + .box { background:linear-gradient(135deg,#7c5cff,#33c6ff); border-color:transparent; color:#fff; box-shadow:0 0 16px rgba(90,110,255,.7); }
+  .check input:focus-visible + .box { outline:3px solid var(--blue); outline-offset:2px; }
+  .check:active .box { transform:scale(.92); }
+  #mailBox, #pinBox { margin-top:14px; }
 </style>
 </head>
 <body>
@@ -370,23 +378,33 @@
     <button type="button" id="addExercise" class="add-exercise">+ Dodaj ćwiczenie</button>
 
     <div class="card extras">
-      <label for="emails">Podsumowanie e-mailem</label>
-      <input id="emails" type="text" inputmode="email" autocapitalize="off" placeholder="adres@example.com, drugi@example.com">
-      <p class="hint">Wiele adresów oddziel przecinkami. Adresy zostają zapamiętane na tym urządzeniu; puste pole = nic nie wysyłam.</p>
-      <div class="field-title" style="margin-top:14px">Zdjęcia i filmy</div>
+      <div class="field-title">Zdjęcia i filmy</div>
       <button type="button" class="pick-media" id="pickMedia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13.5" r="3.5"/></svg><span>Dodaj zdjęcia lub filmy</span></button>
       <input type="file" id="media" accept="image/*,video/*" multiple hidden>
       <ul class="media-list" id="mediaList"></ul>
-      <div id="pinBox" class="hidden">
-        <label for="pin">Kod dostępu do wysyłki</label>
-        <input id="pin" type="password" autocomplete="off" placeholder="PIN ze skryptu Google">
-        <p class="hint">Ten sam, który jest w skrypcie jako właściwość PIN. Zapamiętuję go na tym urządzeniu.</p>
-      </div>
     </div>
 
     <div class="card">
       <label for="notes">Notatka do całego treningu</label>
       <textarea id="notes" placeholder="Ogólne wrażenia, plan na następny raz…"></textarea>
+    </div>
+
+    <div class="card mailcard">
+      <label class="check" for="sendMail">
+        <input type="checkbox" id="sendMail">
+        <span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <span>Wysłać podsumowanie mailem?</span>
+      </label>
+      <div id="mailBox" class="hidden">
+        <label for="emails">Adresy e-mail</label>
+        <input id="emails" type="text" inputmode="email" autocapitalize="off" placeholder="adres@example.com, drugi@example.com">
+        <p class="hint">Wiele adresów oddziel przecinkami. Adresy zostają zapamiętane na tym urządzeniu.</p>
+      </div>
+      <div id="pinBox" class="hidden">
+        <label for="pin">Kod dostępu do wysyłki</label>
+        <input id="pin" type="password" autocomplete="off" placeholder="PIN ze skryptu Google">
+        <p class="hint">Ten sam, który jest w skrypcie jako właściwość PIN. Zapamiętuję go na tym urządzeniu.</p>
+      </div>
     </div>
 
     <div class="bar">
@@ -1101,8 +1119,12 @@
     return $('emails').value.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
   }
 
+  // The summary is only mailed when the box at the bottom is ticked.
+  const wantsMail = () => $('sendMail').checked;
+
   function updatePinBox() {
-    $('pinBox').classList.toggle('hidden', !parseEmails().length && !media.length);
+    $('mailBox').classList.toggle('hidden', !wantsMail());
+    $('pinBox').classList.toggle('hidden', !wantsMail() && !media.length);
   }
 
   async function postJson(body) {
@@ -1257,7 +1279,10 @@
       renderMedia();
     }
   });
-  $('emails').addEventListener('input', updatePinBox);
+  $('sendMail').addEventListener('change', () => {
+    updatePinBox();
+    if (wantsMail() && !$('emails').value.trim()) $('emails').focus();
+  });
   ['emails', 'pin'].forEach((id) => {
     $(id).addEventListener('change', () => {
       try { localStorage.setItem(id === 'pin' ? PIN_KEY : EMAILS_KEY, $(id).value.trim()); } catch (e) {}
@@ -1305,7 +1330,9 @@
       showStatus('err', 'Część plików się nie wysłała — ponów ją albo usuń z listy.');
       return;
     }
-    const emails = parseEmails();
+    const addresses = wantsMail() ? parseEmails() : [];
+    if (wantsMail() && !addresses.length) { showStatus('err', 'Wpisz adres e-mail albo odznacz wysyłkę podsumowania.'); return; }
+    const emails = addresses;
     const badEmail = emails.find((e) => !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(e));
     if (badEmail) { showStatus('err', 'Nieprawidłowy adres e-mail: ' + badEmail); return; }
     if (emails.length > 5) { showStatus('err', 'Maksymalnie 5 adresów e-mail.'); return; }
@@ -1344,6 +1371,8 @@
       renderTrainingSelect(result.sheet);
       try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
       $('notes').value = '';
+      $('sendMail').checked = false;
+      updatePinBox();
       $('newName').value = '';
       $('date').value = today();
       renderExercises();
