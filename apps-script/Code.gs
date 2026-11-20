@@ -12,6 +12,9 @@
  * variant letter, e.g. A1, C2a, C2b. Variants of one section (C2a / C2b) are alternatives:
  * the form shows one tile per section and lets you switch between its variants.
  *
+ * How the day went (energy, sleep, food; 1-5) is kept in three extra rows at the bottom,
+ * marked "Stan" in the Blok column, with a value in the reps column of the session's date.
+ *
  * Exercises and sets are rows; every saved session adds two columns on the right
  * (reps or seconds, and kg). Reps are coloured against the previous date:
  * green = more, red = fewer, blue = the same. Remarks sit in cell notes:
@@ -25,6 +28,7 @@
  * POST (JSON as text/plain)
  *   save a session:
  *   { training, create, date: "YYYY-MM-DD", notes,
+ *     wellness: { energy, sleep, food } (each 1-5, all optional),
  *     exercises: [{ name, mode: "reps" | "time", note, code (e.g. "A1", "C2b"; optional),
  *                   sets: [{ reps, seconds, weight }] }],
  *     emails: ["a@b.pl"], media: [{ id }], pin }
@@ -43,7 +47,7 @@
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 5;
+var VERSION = 6;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
 var HEADER_ROWS = 2;
 var FIRST_SESSION_COL = 4;
@@ -53,6 +57,14 @@ var WEIGHT_FORMAT = '0.0#';
 var COLOR_NAVY = '#0f2a4a';
 var COLOR_SUBHEADER = '#e4e9f2';
 var MEDIA_FOLDER = 'Treningi – media';
+var WELLNESS_BLOCK = 'Stan';
+var WELLNESS = [
+  { key: 'energy', label: 'Energia (1–5)', mail: 'energia' },
+  { key: 'sleep', label: 'Sen (1–5)', mail: 'sen' },
+  { key: 'food', label: 'Jedzenie (1–5)', mail: 'jedzenie' }
+];
+// 1 (worst) .. 5 (best)
+var WELLNESS_COLORS = ['#f7c9c5', '#fbd9b8', '#f8edb0', '#d9efc8', '#c8ecd3'];
 var MAX_EMAILS = 5;
 var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
@@ -158,12 +170,17 @@ function readLayout_(sheet, timeZone) {
   var lastCol = sheet.getLastColumn();
   var rows = [];
   var sessions = [];
+  var wellness = {};
 
   if (lastRow > HEADER_ROWS) {
     var left = sheet.getRange(HEADER_ROWS + 1, 1, lastRow - HEADER_ROWS, 3).getValues();
     left.forEach(function (row, index) {
       var name = String(row[1]).trim();
       if (!name) return;
+      if (String(row[0]).trim() === WELLNESS_BLOCK) {
+        WELLNESS.forEach(function (item) { if (item.label === name) wellness[item.key] = HEADER_ROWS + 1 + index; });
+        return;
+      }
       var code = normalizeCode_(row[0]);
       rows.push({
         row: HEADER_ROWS + 1 + index,
@@ -182,7 +199,7 @@ function readLayout_(sheet, timeZone) {
       sessions.push({ col: FIRST_SESSION_COL + index, date: formatDate_(value, timeZone) });
     });
   }
-  return { rows: rows, sessions: sessions };
+  return { rows: rows, sessions: sessions, wellness: wellness };
 }
 
 function formatDate_(value, timeZone) {
@@ -266,6 +283,15 @@ function validate_(data) {
       throw new Error('Nieprawidłowy adres e-mail: ' + address);
     }
   });
+  if (data.wellness !== undefined && data.wellness !== null) {
+    if (typeof data.wellness !== 'object') throw new Error('Nieprawidłowe samopoczucie.');
+    WELLNESS.forEach(function (item) {
+      var value = data.wellness[item.key];
+      if (value !== undefined && value !== null && !(value === Math.round(value) && value >= 1 && value <= 5)) {
+        throw new Error('Samopoczucie: wartość ' + item.mail + ' musi być od 1 do 5.');
+      }
+    });
+  }
   if (data.media !== undefined && !Array.isArray(data.media)) throw new Error('Nieprawidłowa lista plików.');
   if ((data.media || []).length > MAX_MEDIA) throw new Error('Maksymalnie ' + MAX_MEDIA + ' plików.');
   (data.media || []).forEach(function (item) {
@@ -356,6 +382,25 @@ function ensureRows_(sheet, timeZone, name, code, setCount) {
   return own.slice(0, setCount).map(function (entry) { return entry.row; });
 }
 
+/** Rows of the wellness block, created at the bottom the first time they are needed. */
+function ensureWellnessRows_(sheet, timeZone, keys) {
+  var layout = readLayout_(sheet, timeZone);
+  var missing = WELLNESS.filter(function (item) { return keys.indexOf(item.key) >= 0 && !layout.wellness[item.key]; });
+  if (missing.length) {
+    var start = Math.max(sheet.getLastRow(), HEADER_ROWS) + 1;
+    var end = start + missing.length - 1;
+    if (end > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), end - sheet.getMaxRows());
+    sheet.getRange(start, 1, missing.length, 3).setValues(missing.map(function (item) { return [WELLNESS_BLOCK, item.label, '']; }));
+    sheet.getRange(start, 1, missing.length, 1)
+      .setBackground(COLOR_SUBHEADER).setFontWeight('bold').setHorizontalAlignment('center');
+    sheet.getRange(start, 2, missing.length, 1).setFontColor('#000000').setFontWeight('bold');
+    sheet.getRange(start, 1, 1, Math.max(sheet.getLastColumn(), 3))
+      .setBorder(true, null, null, null, null, null, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+    layout = readLayout_(sheet, timeZone);
+  }
+  return layout.wellness;
+}
+
 function appendSession_(sheet, data, timeZone, files) {
   var date = Utilities.parseDate(data.date, timeZone, 'yyyy-MM-dd');
 
@@ -367,6 +412,10 @@ function appendSession_(sheet, data, timeZone, files) {
     var rows = ensureRows_(sheet, timeZone, name, code, exercise.sets.length);
     return { exercise: exercise, timed: timed, name: name, rows: rows };
   });
+
+  var mood = data.wellness || {};
+  var moodKeys = WELLNESS.filter(function (item) { return mood[item.key]; }).map(function (item) { return item.key; });
+  var moodRows = moodKeys.length ? ensureWellnessRows_(sheet, timeZone, moodKeys) : {};
 
   // 2. The new column pair goes to the right of the last session.
   var layout = readLayout_(sheet, timeZone);
@@ -402,6 +451,13 @@ function appendSession_(sheet, data, timeZone, files) {
         notes[rowIndex][0] = String(item.exercise.note).trim();
       }
     });
+  });
+
+  moodKeys.forEach(function (key) {
+    var rowIndex = moodRows[key] - HEADER_ROWS - 1;
+    values[rowIndex] = [mood[key], ''];
+    formats[rowIndex][0] = REPS_FORMAT;
+    backgrounds[rowIndex][0] = WELLNESS_COLORS[mood[key] - 1];
   });
 
   var body = sheet.getRange(HEADER_ROWS + 1, col, count, 2);
@@ -584,6 +640,13 @@ function buildSummary_(data, sheetName, before, files) {
   if (data.notes && String(data.notes).trim()) {
     text.push('Notatka: ' + String(data.notes).trim(), '');
     html.push('<p style="margin:0 0 14px"><i>' + esc_(String(data.notes).trim()) + '</i></p>');
+  }
+
+  var mood = WELLNESS.filter(function (item) { return data.wellness && data.wellness[item.key]; })
+    .map(function (item) { return item.mail + ' ' + data.wellness[item.key] + '/5'; });
+  if (mood.length) {
+    text.push('Samopoczucie: ' + mood.join(' · '), '');
+    html.push('<p style="margin:0 0 14px">Samopoczucie: <b>' + esc_(mood.join(' · ')) + '</b></p>');
   }
 
   data.exercises.forEach(function (exercise) {

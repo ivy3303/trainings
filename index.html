@@ -149,6 +149,8 @@
     background: var(--pc);
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
+  .set-note { margin: 0 0 8px 2px; padding-left: 8px; border-left: 3px solid var(--blue); font-size: 0.9rem; color: var(--muted); }
+  .set-note:empty { display: none; }
   .field + .field { margin-top: 8px; }
   .field-title { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin: 0 0 4px 2px; }
   .field-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 6px; align-items: center; }
@@ -220,6 +222,16 @@
   .notice.ok { background: var(--green-soft); color: var(--green); }
   .notice.err { background: var(--red-soft); color: #ffb4ae; }
 
+  /* how the day went */
+  .mood-row + .mood-row { margin-top: 12px; }
+  .mood-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 4px; }
+  .mood-label { font-size: 0.95rem; font-weight: 700; }
+  .mood-word { font-size: 0.85rem; color: var(--muted); }
+  .mood-scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .mood-scale button { height: 48px; padding: 0; display: grid; place-items: center; background: var(--field); border: 1px solid var(--line); color: var(--muted); }
+  .mood-scale svg { height: 26px; width: auto; max-width: 80%; display: block; }
+  .mood-scale button.on { background: var(--mc); border-color: var(--mc); color: #1d2228; }
+
   /* e-mail and media */
   .extras .hint { margin-top: 6px; }
   .pick-media { width: 100%; height: 48px; background: var(--field); border: 1.5px dashed #56698a; color: var(--blue); font-weight: 700; }
@@ -235,6 +247,33 @@
   .media-item button { width: 40px; height: 40px; padding: 0; background: transparent; color: var(--muted); }
   .media-item .media-retry { width: auto; padding: 0 10px; color: var(--blue); font-weight: 700; font-size: 0.9rem; }
   #pinBox { margin-top: 14px; }
+
+  .primary { transition: background-color 0.3s, box-shadow 0.3s; }
+  .primary.done { background: #1f7a52; box-shadow: 0 3px 0 #135236; }
+
+  /* motion — only for people who have not asked for less of it */
+  @media (prefers-reduced-motion: no-preference) {
+    @keyframes strip-in { from { transform: scaleX(0); } }
+    @keyframes title-in { from { opacity: 0; transform: translateY(8px); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes stripes { to { background-position: 22px 0; } }
+    .masthead::after { transform-origin: left; animation: strip-in 0.9s cubic-bezier(0.2, 0.8, 0.2, 1) 0.1s both; }
+    .masthead h1 { animation: title-in 0.6s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+    .num-field input { transition: background-color 0.25s, border-color 0.25s, color 0.25s; }
+    .group-chip, .segmented button, .bw { transition: background-color 0.2s, color 0.2s, border-color 0.2s; }
+    .exercise { transition: border-left-color 0.35s; }
+    .primary.busy::after {
+      content: ""; display: inline-block; width: 16px; height: 16px; margin-left: 10px; vertical-align: -2px;
+      border: 2.5px solid rgba(255, 255, 255, 0.35); border-top-color: #fff; border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .media-track i { transition: width 0.25s ease-out; }
+    .media-item.uploading .media-track i {
+      background-image: repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.28) 0 8px, transparent 8px 16px);
+      background-size: 22px 100%;
+      animation: stripes 0.8s linear infinite;
+    }
+  }
 
   @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
 </style>
@@ -275,6 +314,11 @@
       <p class="hint" id="lastInfo"></p>
     </div>
 
+    <div class="card mood">
+      <div class="field-title">Samopoczucie</div>
+      <div id="moodList"></div>
+    </div>
+
     <div id="exercises"></div>
     <datalist id="exerciseNames"></datalist>
 
@@ -308,11 +352,49 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 5;
+  const EXPECTED_SCRIPT_VERSION = 6;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
-  const GROUP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f1df8e' };
+  const GROUP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f4a3b8' };
+
+  // How the day went, 1 (worst) to 5 (best); every scale is optional.
+  // Energy is a battery, sleep a moon filling up, food a plate with slices.
+  const ICONS = {
+    battery(n) {
+      let bars = '';
+      for (let i = 0; i < 5; i++) {
+        bars += '<rect x="' + (3.6 + i * 4.5) + '" y="5.6" width="3.5" height="8.8" rx="0.8" fill="currentColor" opacity="' + (n > i ? 1 : 0.2) + '"/>';
+      }
+      return '<svg viewBox="0 0 32 20" aria-hidden="true"><rect x="1" y="3" width="26" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
+        '<rect x="28.2" y="7" width="3" height="6" rx="1" fill="currentColor"/>' + bars + '</svg>';
+    },
+    moon(n) {
+      const phase = (n - 1) / 4; // 0 new moon .. 1 full moon
+      const rx = Math.abs(1 - 2 * phase) * 9;
+      let lit = '';
+      if (phase === 1) lit = '<circle cx="12" cy="12" r="9" fill="currentColor"/>';
+      else if (phase > 0) lit = '<path d="M12 3A9 9 0 0 1 12 21A' + rx + ' 9 0 0 ' + (phase < 0.5 ? 0 : 1) + ' 12 3Z" fill="currentColor"/>';
+      return '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="currentColor" opacity="0.2"/>' + lit + '</svg>';
+    },
+    plate(n) {
+      let slices = '';
+      const point = (r, deg) => (12 + r * Math.cos(deg * Math.PI / 180)).toFixed(2) + ' ' + (12 + r * Math.sin(deg * Math.PI / 180)).toFixed(2);
+      for (let i = 0; i < 5; i++) {
+        const from = -90 + i * 72 + 3;
+        const to = -90 + (i + 1) * 72 - 3;
+        slices += '<path d="M' + point(10.5, from) + 'A10.5 10.5 0 0 1 ' + point(10.5, to) + 'L' + point(4.5, to) + 'A4.5 4.5 0 0 0 ' + point(4.5, from) + 'Z" fill="currentColor" opacity="' + (n > i ? 1 : 0.2) + '"/>';
+      }
+      return '<svg viewBox="0 0 24 24" aria-hidden="true">' + slices + '</svg>';
+    }
+  };
+  const MOOD = [
+    { key: 'energy', label: 'Energia', icon: 'battery', words: ['Zero sił', 'Mało sił', 'Średnio', 'Dobrze', 'Pełna energia'] },
+    { key: 'sleep', label: 'Sen', icon: 'moon', words: ['Prawie wcale', 'Słabo', 'Średnio', 'Dobrze', 'Super'] },
+    { key: 'food', label: 'Jedzenie', icon: 'plate', words: ['Prawie nic', 'Kiepsko', 'Średnio', 'Dobrze', 'Idealnie'] }
+  ];
+  const MOOD_COLORS = ['#f0746c', '#f6a66c', '#f1df8e', '#a8dcaa', '#4fd09a'];
+  let wellness = {};
 
   const NEW_VALUE = '__new__';
   const LAST_SELECTED_KEY = 'trainings.lastSelected';
@@ -336,10 +418,24 @@
   const isConfigured = () => !SCRIPT_URL.startsWith('PASTE_');
   const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
 
+  // ---------- motion ----------
+
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  function animate(el, keyframes, options) {
+    if (!el || reduceMotion.matches || !el.animate) return null;
+    return el.animate(keyframes, Object.assign({ easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' }, options));
+  }
+
+  const pop = (el) => animate(el, [{ transform: 'scale(0.8)' }, { transform: 'scale(1.15)', offset: 0.55 }, { transform: 'scale(1)' }], { duration: 280 });
+  const bump = (el) => animate(el, [{ transform: 'scale(1)' }, { transform: 'scale(1.13)', offset: 0.4 }, { transform: 'scale(1)' }], { duration: 220 });
+  const glow = (el, rgb) => animate(el, [{ boxShadow: '0 0 0 0 rgba(' + rgb + ', 0.75)' }, { boxShadow: '0 0 0 12px rgba(' + rgb + ', 0)' }], { duration: 650, easing: 'ease-out' });
+
   function showStatus(kind, text) {
     const el = $('status');
     el.className = 'notice show ' + kind;
     el.textContent = text;
+    animate(el, [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
   }
 
   function currentTraining() {
@@ -482,6 +578,7 @@
         '<b class="num"></b>' +
         '<button type="button" class="remove-set" title="Usuń serię" aria-label="Usuń serię">✕</button>' +
       '</div>' +
+      '<p class="set-note"></p>' +
       '<div class="field">' +
         '<div class="field-title main-label"></div>' +
         '<div class="field-row">' + numberField('main', timed ? STEP.time : STEP.reps, 1) + '<span></span></div>' +
@@ -507,6 +604,7 @@
     }
     card.querySelector('.sets').appendChild(row);
     renumber(card);
+    return row;
   }
 
   // ---------- variants: alternatives of one section (C2a, C2b …) ----------
@@ -603,6 +701,11 @@
     }
     loadVariant(card, variants[card._index]);
     refresh();
+    ['.groups', '.prev', '.segmented', '.sets', '.set-actions'].forEach((selector, i) => {
+      animate(card.querySelector(selector), [{ opacity: 0, transform: 'translateX(28px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: i * 30 });
+    });
+    animate(card.querySelector('.swap svg'), [{ transform: 'rotate(0deg)' }, { transform: 'rotate(180deg)' }], { duration: 420, easing: 'ease-in-out', fill: 'none' });
+    pop(card.querySelector('.swap-count'));
     const name = card.querySelector('.name');
     if (!name.value) name.focus();
   }
@@ -664,30 +767,36 @@
       // A new set starts with the values of the previous one, so only changes need tapping.
       const rows = card.querySelectorAll('.set');
       const last = rows[rows.length - 1];
+      let row;
       if (last) {
         const timed = modeOf(card) === 'time';
         const main = last.querySelector('.main').value;
         const weight = last.dataset.bw ? 'BW' : last.querySelector('.weight').value;
-        createSet(card, {
+        row = createSet(card, {
           reps: timed ? 0 : Number(main),
           seconds: timed ? Number(main) : 0,
           weight: weight === 'BW' ? 'BW' : (weight === '' ? null : Number(weight))
         });
       } else {
-        createSet(card, null);
+        row = createSet(card, null);
       }
+      animate(row, [{ opacity: 0, transform: 'translateY(-14px) scale(0.96)' }, { opacity: 1, transform: 'none' }], { duration: 340 });
       refresh();
     });
     card.querySelector('.sets').addEventListener('click', (event) => {
       const button = event.target.closest('.remove-set');
-      if (!button || card.querySelectorAll('.set').length <= 1) return;
-      button.closest('.set').remove();
-      renumber(card);
-      refresh();
+      if (!button || card.querySelectorAll('.set:not([data-leaving])').length <= 1) return;
+      const row = button.closest('.set');
+      row.dataset.leaving = '1';
+      const finish = () => { row.remove(); renumber(card); refresh(); };
+      const run = animate(row, [{ opacity: 1, transform: 'none' }, { opacity: 0, transform: 'translateX(50px) scale(0.95)' }], { duration: 230, easing: 'ease-in', fill: 'forwards' });
+      if (run) run.onfinish = finish; else finish();
     });
 
     loadVariant(card, list[card._index]);
     exercisesEl.appendChild(card);
+    const delay = renderingAll ? Math.min(exercisesEl.children.length - 1, 8) * 60 : 0;
+    animate(card, [{ opacity: 0, transform: 'translateY(22px) scale(0.985)' }, { opacity: 1, transform: 'none' }], { duration: 500, delay });
     return card;
   }
 
@@ -751,6 +860,35 @@
     return parts.filter((p) => p.diff !== 0);
   }
 
+  // A remark like "gumy: seria 1 🟣⚫️🔴, seria 2 🟣⚫️🟡" is split: each "seria N …" part goes to
+  // that set's tile; the rest (nothing, or "ustawienie maszyny (3/2)") stays a general remark.
+  function parseSetNotes(note) {
+    const result = { general: [], sets: {} };
+    const text = (note || '').trim();
+    if (!text) return result;
+    const matches = [...text.matchAll(/(?:^|[\s,;])seria\s*(\d+)\s*:?\s*/gi)];
+    if (!matches.length) { result.general.push(text); return result; }
+    const clean = (t) => t.trim().replace(/^[:,;\s]+|[,;\s]+$/g, '');
+    let prefix = clean(text.slice(0, matches[0].index)).replace(/:$/, '');
+    if (prefix.length > 20) { result.general.push(prefix); prefix = ''; }
+    matches.forEach((match, i) => {
+      const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+      const [own, ...rest] = text.slice(match.index + match[0].length, end).split(';');
+      rest.map(clean).filter(Boolean).forEach((t) => result.general.push(t));
+      const label = clean(own);
+      if (label) result.sets[Number(match[1])] = (prefix ? prefix + ': ' : '') + label;
+    });
+    return result;
+  }
+
+  function markSetNotes(card, previous) {
+    const parsed = parseSetNotes(previous && previous.note);
+    card.querySelectorAll('.set').forEach((row, i) => {
+      row.querySelector('.set-note').textContent = parsed.sets[i + 1] || '';
+    });
+    return parsed;
+  }
+
   // Green when a set has more reps/seconds than the same set last time, red when fewer.
   function markChanges(card, previous) {
     const comparable = previous && previous.mode === modeOf(card);
@@ -758,8 +896,12 @@
       const input = row.querySelector('.main');
       const before = comparable && previous.sets[i] ? (previous.mode === 'time' ? previous.sets[i].seconds : previous.sets[i].reps) : null;
       const now = input.value === '' ? NaN : Number(input.value);
+      const wasMore = input.classList.contains('more');
+      const wasLess = input.classList.contains('less');
       input.classList.toggle('more', Boolean(before) && now > before);
       input.classList.toggle('less', Boolean(before) && now < before);
+      if (!wasMore && input.classList.contains('more')) glow(input, '79, 208, 154');
+      if (!wasLess && input.classList.contains('less')) glow(input, '240, 116, 108');
     });
   }
 
@@ -767,6 +909,7 @@
     const current = readCard(card);
     const previous = findPrevious(current.name);
     markChanges(card, previous);
+    const parsedNote = markSetNotes(card, previous);
     updateSwap(card);
     const hint = card.querySelector('.prev');
     hint.textContent = '';
@@ -792,13 +935,16 @@
       }
       hint.appendChild(result);
     }
-    if (previous.note) {
+    if (parsedNote.general.length) {
       hint.appendChild(document.createElement('br'));
-      hint.append('Poprzednia uwaga: ' + previous.note);
+      hint.append('Poprzednia uwaga: ' + parsedNote.general.join('; '));
     }
   }
 
+  let renderingAll = false;
+
   function renderExercises() {
+    renderingAll = true;
     exercisesEl.innerHTML = '';
     const training = currentTraining();
     $('newNameBox').classList.toggle('hidden', !isNewTraining());
@@ -813,12 +959,49 @@
         ? 'Nowy trening: pierwszy zapis stworzy nową zakładkę.'
         : 'Nie znaleziono żadnych treningów w arkuszu. Jeśli powinny tu być, sprawdź wdrożenie skryptu Google.';
     }
+    renderingAll = false;
     refresh();
   }
 
   function refresh() {
     exercisesEl.querySelectorAll('.exercise').forEach(updateCard);
   }
+
+  // ---------- how the day went ----------
+
+  function renderMood() {
+    $('moodList').innerHTML = MOOD.map((item) =>
+      '<div class="mood-row" data-key="' + item.key + '">' +
+        '<div class="mood-head"><span class="mood-label">' + item.label + '</span><span class="mood-word"></span></div>' +
+        '<div class="mood-scale" role="group" aria-label="' + item.label + ' od 1 do 5">' +
+          item.words.map((word, i) => '<button type="button" data-value="' + (i + 1) + '" style="--mc:' + MOOD_COLORS[i] + '" aria-label="' + (i + 1) + ' – ' + word + '">' + ICONS[item.icon](i + 1) + '</button>').join('') +
+        '</div>' +
+      '</div>').join('');
+    updateMood();
+  }
+
+  function updateMood() {
+    MOOD.forEach((item) => {
+      const row = $('moodList').querySelector('[data-key="' + item.key + '"]');
+      const value = wellness[item.key] || 0;
+      row.querySelectorAll('button').forEach((b) => {
+        const on = Number(b.dataset.value) === value;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      row.querySelector('.mood-word').textContent = value ? item.words[value - 1] : '';
+    });
+  }
+
+  $('moodList').addEventListener('click', (event) => {
+    const button = event.target.closest('button');
+    if (!button) return;
+    const key = button.closest('.mood-row').dataset.key;
+    const value = Number(button.dataset.value);
+    if (wellness[key] === value) delete wellness[key]; else wellness[key] = value;
+    updateMood();
+    pop(button);
+  });
 
   // ---------- e-mail and photos / videos ----------
 
@@ -952,6 +1135,14 @@
       li.querySelector('.media-state').textContent = state;
       li.querySelector('.media-track i').style.width = (item.status === 'done' ? 100 : Math.round(item.progress * 100)) + '%';
       list.appendChild(li);
+      if (!item.shown) {
+        item.shown = true;
+        animate(li, [{ opacity: 0, transform: 'translateY(10px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 320 });
+      }
+      if (item.status === 'done' && !item.popped) {
+        item.popped = true;
+        pop(li.querySelector('.media-state'));
+      }
     });
     updatePinBox();
   }
@@ -1035,7 +1226,10 @@
     if (emails.length > 5) { showStatus('err', 'Maksymalnie 5 adresów e-mail.'); return; }
     if ((emails.length || media.length) && !pinValue()) { showStatus('err', 'Podaj kod dostępu do wysyłki (pole na dole formularza).'); return; }
 
+    let saved = false;
     submitBtn.disabled = true;
+    submitBtn.classList.add('busy');
+    submitBtn.textContent = 'Zapisuję…';
     showStatus('warn', 'Zapisuję…');
     try {
       // A plain-text body keeps this a "simple" request, so Apps Script needs no CORS preflight.
@@ -1047,6 +1241,7 @@
           date: $('date').value,
           notes: $('notes').value.trim(),
           exercises,
+          wellness: Object.keys(wellness).length ? wellness : undefined,
           emails,
           media: media.map((m) => ({ id: m.id })),
           pin: emails.length || media.length ? pinValue() : ''
@@ -1056,6 +1251,8 @@
       if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
       media = [];
       renderMedia();
+      wellness = {};
+      updateMood();
 
       try { await loadTrainings(); } catch (error) { /* saved anyway; keep the previous list */ }
       renderTrainingSelect(result.sheet);
@@ -1070,11 +1267,21 @@
       if (result.emailed) message += ' Wysłano podsumowanie na ' + result.emailed + ' adr.';
       if (result.emailError) message += ' Maila nie udało się wysłać: ' + result.emailError;
       showStatus(result.emailError ? 'err' : 'ok', message);
+      saved = true;
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       showStatus('err', 'Nie udało się zapisać: ' + error.message + ' Dane zostały na stronie, spróbuj ponownie.');
     } finally {
       submitBtn.disabled = false;
+      submitBtn.classList.remove('busy');
+      if (saved) {
+        submitBtn.textContent = '✓ Zapisano';
+        submitBtn.classList.add('done');
+        pop(submitBtn);
+        setTimeout(() => { submitBtn.textContent = 'Zapisz trening'; submitBtn.classList.remove('done'); }, 1800);
+      } else {
+        submitBtn.textContent = 'Zapisz trening';
+      }
     }
   });
 
@@ -1110,6 +1317,7 @@
     if (chip) {
       const card = chip.closest('.exercise');
       applyGroup(card, card.dataset.group === chip.dataset.group ? '' : chip.dataset.group);
+      pop(chip);
       return;
     }
 
@@ -1135,6 +1343,7 @@
     if (bw) {
       const row = bw.closest('.set');
       setBodyweight(row, !row.dataset.bw);
+      pop(bw);
       refresh();
       return;
     }
@@ -1146,11 +1355,16 @@
       const current = input.value === '' ? 0 : Number(input.value);
       const next = round(current + Number(input.dataset.step) * Number(step.dataset.dir));
       input.value = Math.max(Number(input.dataset.min), next);
+      bump(input);
       refresh();
     }
   });
 
-  $('addExercise').addEventListener('click', () => { createExercise(); refresh(); });
+  $('addExercise').addEventListener('click', () => {
+    const card = createExercise();
+    refresh();
+    card.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
+  });
 
   async function init() {
     $('date').value = today();
@@ -1165,6 +1379,7 @@
     }
     let remembered = null;
     try { remembered = localStorage.getItem(LAST_SELECTED_KEY); } catch (e) {}
+    renderMood();
     renderTrainingSelect(remembered);
     renderExercises();
     try {
