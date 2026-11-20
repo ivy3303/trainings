@@ -3,8 +3,9 @@
  *
  * One TRAINING (e.g. "FBW A", "Push") = one sheet (tab). Layout of a tab:
  *
- *   Blok | Ćwiczenie | Seria |  2026-11-10   |  2026-11-24   | ...
- *        |           |       | Powt./czas | Kg | Powt./czas | Kg | ...
+ *   Blok | Ćwiczenie    | Seria |  2026-11-10   |  2026-11-24   | ...
+ *   Stan | Samopoczucie |       |    ● ● ●      |    ● ● ●      | ...   (energy, sleep, food)
+ *        |              |       | Powt./czas | Kg | Powt./czas | Kg | ...
  *   A0   | Wioślarz  |   1   |   120 s    |    |            |    |
  *    ...
  *
@@ -12,8 +13,9 @@
  * variant letter, e.g. A1, C2a, C2b. Variants of one section (C2a / C2b) are alternatives:
  * the form shows one tile per section and lets you switch between its variants.
  *
- * How the day went (energy, sleep, food; 1-3) is kept in three extra rows at the bottom,
- * marked "Stan" in the Blok column, with a value in the reps column of the session's date.
+ * How the day went is the second header row, right under the date: three coloured dots (energy, sleep,
+ * food; red / yellow / green = 1 / 2 / 3, grey = not rated) in one merged cell, with the words and the
+ * free-text remark in that cell's note.
  *
  * Exercises and sets are rows; every saved session adds two columns on the right
  * (reps or seconds, and kg). Reps are coloured against the previous date:
@@ -28,7 +30,7 @@
  * POST (JSON as text/plain)
  *   save a session:
  *   { training, create, date: "YYYY-MM-DD", notes,
- *     wellness: { energy, sleep, food } (each 1-3, all optional),
+ *     wellness: { energy, sleep, food (each 1-3), note (text) } (all optional),
  *     exercises: [{ name, mode: "reps" | "time", note, code (e.g. "A1", "C2b"; optional),
  *                   sets: [{ reps, seconds, weight }] }],
  *     emails: ["a@b.pl"], media: [{ id }], pin }
@@ -47,9 +49,10 @@
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 7;
+var VERSION = 10;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
-var HEADER_ROWS = 2;
+var HEADER_ROWS = 3;
+var WELLNESS_ROW = 2;
 var FIRST_SESSION_COL = 4;
 var TIME_FORMAT = '0" s"';
 var REPS_FORMAT = '0';
@@ -58,13 +61,16 @@ var COLOR_NAVY = '#0f2a4a';
 var COLOR_SUBHEADER = '#e4e9f2';
 var MEDIA_FOLDER = 'Treningi – media';
 var WELLNESS_BLOCK = 'Stan';
+var WELLNESS_LABEL = 'Samopoczucie';
 var WELLNESS = [
-  { key: 'energy', label: 'Energia (1–3)', mail: 'energia' },
-  { key: 'sleep', label: 'Sen (1–3)', mail: 'sen' },
-  { key: 'food', label: 'Jedzenie (1–3)', mail: 'jedzenie' }
+  { key: 'energy', label: 'Energia', mail: 'energia', words: ['Mało sił', 'Średnio', 'Forma mutant'] },
+  { key: 'sleep', label: 'Sen', mail: 'sen', words: ['Słabo', 'Średnio', 'Dobrze'] },
+  { key: 'food', label: 'Jedzenie', mail: 'jedzenie', words: ['Kiepsko', 'Średnio', 'Dobrze'] }
 ];
-// 1 (worst) .. 3 (best)
-var WELLNESS_COLORS = ['#f7c9c5', '#f8edb0', '#c8ecd3'];
+// 1 (worst) .. 3 (best); grey = not rated
+var WELLNESS_DOT_COLORS = ['#e5534b', '#f2c230', '#34c47c'];
+var WELLNESS_DOT_EMPTY = '#b8bfca';
+var WELLNESS_NOTE_MAX = 500;
 var MAX_EMAILS = 5;
 var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
@@ -170,17 +176,11 @@ function readLayout_(sheet, timeZone) {
   var lastCol = sheet.getLastColumn();
   var rows = [];
   var sessions = [];
-  var wellness = {};
-
   if (lastRow > HEADER_ROWS) {
     var left = sheet.getRange(HEADER_ROWS + 1, 1, lastRow - HEADER_ROWS, 3).getValues();
     left.forEach(function (row, index) {
       var name = String(row[1]).trim();
       if (!name) return;
-      if (String(row[0]).trim() === WELLNESS_BLOCK) {
-        WELLNESS.forEach(function (item) { if (item.label === name) wellness[item.key] = HEADER_ROWS + 1 + index; });
-        return;
-      }
       var code = normalizeCode_(row[0]);
       rows.push({
         row: HEADER_ROWS + 1 + index,
@@ -199,7 +199,7 @@ function readLayout_(sheet, timeZone) {
       sessions.push({ col: FIRST_SESSION_COL + index, date: formatDate_(value, timeZone) });
     });
   }
-  return { rows: rows, sessions: sessions, wellness: wellness };
+  return { rows: rows, sessions: sessions };
 }
 
 function formatDate_(value, timeZone) {
@@ -291,6 +291,10 @@ function validate_(data) {
         throw new Error('Samopoczucie: wartość ' + item.mail + ' musi być od 1 do 3.');
       }
     });
+    var remark = data.wellness.note;
+    if (remark !== undefined && remark !== null && (typeof remark !== 'string' || remark.length > WELLNESS_NOTE_MAX)) {
+      throw new Error('Uwagi do samopoczucia: maksymalnie ' + WELLNESS_NOTE_MAX + ' znaków.');
+    }
   }
   if (data.media !== undefined && !Array.isArray(data.media)) throw new Error('Nieprawidłowa lista plików.');
   if ((data.media || []).length > MAX_MEDIA) throw new Error('Maksymalnie ' + MAX_MEDIA + ' plików.');
@@ -327,10 +331,12 @@ function cleanSheetName_(name) {
 
 function createTrainingSheet_(spreadsheet, name) {
   var sheet = spreadsheet.insertSheet(name);
-  sheet.getRange(1, 1, 1, 3).setValues([LEFT_HEADER]);
-  [1, 2, 3].forEach(function (col) { sheet.getRange(1, col, HEADER_ROWS, 1).merge(); });
-  sheet.getRange(1, 1, HEADER_ROWS, 3)
+  sheet.getRange(1, 1, 1, 3).setValues([LEFT_HEADER])
     .setBackground(COLOR_NAVY).setFontColor('#ffffff').setFontWeight('bold')
+    .setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.getRange(WELLNESS_ROW, 1, 1, 3).setValues([[WELLNESS_BLOCK, WELLNESS_LABEL, '']]);
+  sheet.getRange(WELLNESS_ROW, 1, HEADER_ROWS - 1, 3)
+    .setBackground(COLOR_SUBHEADER).setFontColor('#000000').setFontWeight('bold')
     .setHorizontalAlignment('center').setVerticalAlignment('middle');
   sheet.setFrozenRows(HEADER_ROWS);
   sheet.setFrozenColumns(3);
@@ -382,29 +388,33 @@ function ensureRows_(sheet, timeZone, name, code, setCount) {
   return own.slice(0, setCount).map(function (entry) { return entry.row; });
 }
 
-/** Rows of the wellness block, created at the bottom the first time they are needed. */
-function ensureWellnessRows_(sheet, timeZone, keys) {
-  var layout = readLayout_(sheet, timeZone);
-  var missing = WELLNESS.filter(function (item) { return keys.indexOf(item.key) >= 0 && !layout.wellness[item.key]; });
-  if (missing.length) {
-    var start = Math.max(sheet.getLastRow(), HEADER_ROWS) + 1;
-    var end = start + missing.length - 1;
-    if (end > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), end - sheet.getMaxRows());
-    sheet.getRange(start, 1, missing.length, 3).setValues(missing.map(function (item) { return [WELLNESS_BLOCK, item.label, '']; }));
-    sheet.getRange(start, 1, missing.length, 1)
-      .setBackground(COLOR_SUBHEADER).setFontWeight('bold').setHorizontalAlignment('center');
-    sheet.getRange(start, 2, missing.length, 1).setFontColor('#000000').setFontWeight('bold');
-    sheet.getRange(start, 1, 1, Math.max(sheet.getLastColumn(), 3))
-      .setBorder(true, null, null, null, null, null, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
-    layout = readLayout_(sheet, timeZone);
-  }
-  return layout.wellness;
+/** The second header row of a new date: three coloured dots (energy, sleep, food), words and remark in the note. */
+function writeWellness_(sheet, col, mood) {
+  var remark = String(mood.note || '').trim();
+  var rated = WELLNESS.filter(function (item) { return mood[item.key]; });
+  var cell = sheet.getRange(WELLNESS_ROW, col, 1, 2);
+  cell.merge();
+  cell.setBackground(COLOR_SUBHEADER).setHorizontalAlignment('center').setVerticalAlignment('middle');
+  if (!rated.length && !remark) return;
+
+  var builder = SpreadsheetApp.newRichTextValue().setText('● ● ●');
+  WELLNESS.forEach(function (item, index) {
+    var color = mood[item.key] ? WELLNESS_DOT_COLORS[mood[item.key] - 1] : WELLNESS_DOT_EMPTY;
+    builder.setTextStyle(index * 2, index * 2 + 1, SpreadsheetApp.newTextStyle().setForegroundColor(color).build());
+  });
+  var top = sheet.getRange(WELLNESS_ROW, col);
+  top.setRichTextValue(builder.build());
+  top.setFontSize(16);
+
+  var lines = rated.map(function (item) { return item.label + ': ' + item.words[mood[item.key] - 1] + ' (' + mood[item.key] + '/3)'; });
+  if (remark) lines.push('', 'Uwagi: ' + remark);
+  top.setNote(lines.join('\n'));
 }
 
 function appendSession_(sheet, data, timeZone, files) {
   var date = Utilities.parseDate(data.date, timeZone, 'yyyy-MM-dd');
 
-  // 1. Make sure every exercise has rows for all of its sets.
+  // 1. Every exercise gets rows for all of its sets.
   var plan = data.exercises.map(function (exercise) {
     var timed = exercise.mode === 'time';
     var name = String(exercise.name).trim();
@@ -412,10 +422,6 @@ function appendSession_(sheet, data, timeZone, files) {
     var rows = ensureRows_(sheet, timeZone, name, code, exercise.sets.length);
     return { exercise: exercise, timed: timed, name: name, rows: rows };
   });
-
-  var mood = data.wellness || {};
-  var moodKeys = WELLNESS.filter(function (item) { return mood[item.key]; }).map(function (item) { return item.key; });
-  var moodRows = moodKeys.length ? ensureWellnessRows_(sheet, timeZone, moodKeys) : {};
 
   // 2. The new column pair goes to the right of the last session.
   var layout = readLayout_(sheet, timeZone);
@@ -453,20 +459,12 @@ function appendSession_(sheet, data, timeZone, files) {
     });
   });
 
-  moodKeys.forEach(function (key) {
-    var rowIndex = moodRows[key] - HEADER_ROWS - 1;
-    values[rowIndex] = [mood[key], ''];
-    formats[rowIndex][0] = REPS_FORMAT;
-    backgrounds[rowIndex][0] = WELLNESS_COLORS[mood[key] - 1];
-  });
-
   var body = sheet.getRange(HEADER_ROWS + 1, col, count, 2);
   body.setValues(values);
   body.setNumberFormats(formats);
   body.setBackgrounds(backgrounds);
   sheet.getRange(HEADER_ROWS + 1, col, count, 1).setNotes(notes.map(function (n) { return [n[0]]; }));
   body.setHorizontalAlignment('center');
-
   // 3. Header of the new date.
   var head = sheet.getRange(1, col, 1, 2);
   head.merge();
@@ -479,7 +477,8 @@ function appendSession_(sheet, data, timeZone, files) {
     headNote.push('Zdjęcia i filmy:\n' + files.map(function (file) { return '- ' + file.name + ': ' + file.url; }).join('\n'));
   }
   if (headNote.length) sheet.getRange(1, col).setNote(headNote.join('\n\n'));
-  sheet.getRange(2, col, 1, 2).setValues([['Powt./czas', 'Kg']])
+  writeWellness_(sheet, col, data.wellness || {});
+  sheet.getRange(HEADER_ROWS, col, 1, 2).setValues([['Powt./czas', 'Kg']])
     .setBackground(COLOR_SUBHEADER).setFontWeight('bold').setHorizontalAlignment('center');
   sheet.setColumnWidth(col, 90);
   sheet.setColumnWidth(col + 1, 70);
@@ -647,6 +646,11 @@ function buildSummary_(data, sheetName, before, files) {
   if (mood.length) {
     text.push('Samopoczucie: ' + mood.join(' · '), '');
     html.push('<p style="margin:0 0 14px">Samopoczucie: <b>' + esc_(mood.join(' · ')) + '</b></p>');
+  }
+  var moodNote = data.wellness && data.wellness.note ? String(data.wellness.note).trim() : '';
+  if (moodNote) {
+    text.push('Uwagi do samopoczucia: ' + moodNote, '');
+    html.push('<p style="margin:0 0 14px"><i>Uwagi do samopoczucia: ' + esc_(moodNote) + '</i></p>');
   }
 
   data.exercises.forEach(function (exercise) {

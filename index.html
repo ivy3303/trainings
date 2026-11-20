@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Treningi</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
 <style>
   /* Palette taken from the gym floor: concrete, chalk, iron and the colour-coded weight plates. */
   :root {
@@ -277,6 +280,48 @@
   }
 
   @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
+
+  /* ===== Style: frosted glass over an aurora, big soft radii, pills, glow ===== */
+  :root {
+    --bg:#0b0f1f; --card:rgba(255,255,255,.075); --raised:rgba(255,255,255,.09); --field:rgba(6,9,22,.5); --line:rgba(255,255,255,.15); --text:#f4f6ff; --muted:#aab4d8;
+    --blue:#a9bcff; --blue-btn:#6c7dff; --blue-btn-edge:#4a58d8; --blue-soft:rgba(108,125,255,.28); --green:#5ef0b0; --green-soft:rgba(40,200,140,.2); --red:#ff8a80; --red-soft:rgba(255,90,90,.2);
+  }
+  body { font-family:'DM Sans', system-ui, sans-serif; background:
+    radial-gradient(60% 38% at 8% 0%, rgba(124,92,255,.55), transparent 62%),
+    radial-gradient(50% 36% at 100% 22%, rgba(0,205,210,.32), transparent 62%),
+    radial-gradient(70% 45% at 40% 100%, rgba(255,92,150,.34), transparent 62%), #0b0f1f; background-attachment:fixed; }
+  .masthead { background:transparent; padding:24px 16px 10px; }
+  .masthead::after { display:none; }
+  .masthead h1 { font-size:2.3rem; font-weight:800; background:linear-gradient(120deg,#fff 20%,#b9a8ff 60%,#6fe3ff); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .card { background:rgba(255,255,255,.075); backdrop-filter:blur(18px) saturate(150%); -webkit-backdrop-filter:blur(18px) saturate(150%); border:1px solid rgba(255,255,255,.17); border-radius:28px; padding:18px 14px; box-shadow:0 22px 44px -22px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.2); }
+  input, textarea, select { border-radius:16px; background:rgba(6,9,22,.5); border:1px solid rgba(255,255,255,.14); }
+  button { border-radius:999px; }
+  .exercise { border-left:1px solid rgba(255,255,255,.17); box-shadow:
+    inset 7px 0 0 var(--gc, transparent),
+    inset 12px 0 12px -8px color-mix(in srgb, var(--gc, transparent) 40%, transparent),
+    -6px 0 16px -6px color-mix(in srgb, var(--gc, transparent) 50%, transparent),
+    0 22px 44px -22px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.2); }
+  .exercise-head .name { font-weight:700; }
+  .num-field input { font-size:1.45rem; border-radius:18px; }
+  .num-field .step { flex:0 0 44px; width:44px; height:44px; align-self:center; border-radius:50%; background:rgba(108,125,255,.28); border:1px solid rgba(160,175,255,.35); }
+  .bw { width:46px; height:46px; border-radius:50%; }
+  .set { border-radius:22px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12); }
+  .plate { box-shadow:0 0 12px var(--pc), inset 0 0 0 1px rgba(255,255,255,.4); }
+  .segmented { border-radius:999px; background:rgba(6,9,22,.45); }
+  .segmented button { border-radius:999px; }
+  .segmented button.on { background:linear-gradient(135deg,#7c5cff,#3fb8ff); color:#fff; }
+  .group-chip { border-radius:999px; }
+  .group-chip.on { box-shadow:0 0 16px color-mix(in srgb, var(--c) 70%, transparent); }
+  .mood-scale button { border-radius:18px; background:rgba(6,9,22,.45); }
+  .mood-scale button.on { box-shadow:0 0 18px color-mix(in srgb, var(--mc) 65%, transparent); }
+  .swap { border-radius:50%; }
+  .set-actions button, .add-exercise, .pick-media { border-radius:999px; border:1.5px dashed rgba(169,188,255,.5); background:rgba(255,255,255,.04); }
+  .primary { background:linear-gradient(135deg,#7c5cff,#33c6ff); border-radius:999px; box-shadow:0 12px 28px -8px rgba(90,110,255,.85); font-size:1.1rem; }
+  .primary:active { box-shadow:0 4px 12px -6px rgba(90,110,255,.8); transform:scale(.98); }
+  .bar { background:rgba(11,15,31,.6); backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px); border-top:1px solid rgba(255,255,255,.12); box-shadow:none; }
+  .notice { border-radius:18px; }
+  .notice.warn { color:#dfe6ff; }
+  .mood-scale button.on { background:var(--mc); color:#12162a; }
 </style>
 </head>
 <body>
@@ -313,6 +358,8 @@
     <div class="card mood">
       <div class="field-title">Samopoczucie</div>
       <div id="moodList"></div>
+      <label for="moodNote" style="margin-top:14px">Uwagi do samopoczucia</label>
+      <textarea id="moodNote" maxlength="500" placeholder="Szczegóły samopoczucia"></textarea>
     </div>
 
     <div id="exercises"></div>
@@ -353,7 +400,7 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 7;
+  const EXPECTED_SCRIPT_VERSION = 10;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
@@ -390,7 +437,7 @@
     }
   };
   const MOOD = [
-    { key: 'energy', label: 'Energia', icon: 'battery', words: ['Mało sił', 'Średnio', 'Pełna energia'] },
+    { key: 'energy', label: 'Energia', icon: 'battery', words: ['Mało sił', 'Średnio', 'Forma mutant'] },
     { key: 'sleep', label: 'Sen', icon: 'moon', words: ['Słabo', 'Średnio', 'Dobrze'] },
     { key: 'food', label: 'Jedzenie', icon: 'plate', words: ['Kiepsko', 'Średnio', 'Dobrze'] }
   ];
@@ -1009,6 +1056,13 @@
     });
   }
 
+  // Scales plus the free-text remark, or nothing when the section was left empty.
+  function wellnessPayload() {
+    const note = $('moodNote').value.trim();
+    const payload = Object.assign({}, wellness, note ? { note } : {});
+    return Object.keys(payload).length ? payload : undefined;
+  }
+
   $('moodList').addEventListener('click', (event) => {
     const button = event.target.closest('button');
     if (!button) return;
@@ -1257,7 +1311,7 @@
           date: $('date').value,
           notes: $('notes').value.trim(),
           exercises,
-          wellness: Object.keys(wellness).length ? wellness : undefined,
+          wellness: wellnessPayload(),
           emails,
           media: media.map((m) => ({ id: m.id })),
           pin: emails.length || media.length ? pinValue() : ''
@@ -1268,6 +1322,7 @@
       media = [];
       renderMedia();
       wellness = {};
+      $('moodNote').value = '';
       updateMood();
 
       try { await loadTrainings(); } catch (error) { /* saved anyway; keep the previous list */ }
