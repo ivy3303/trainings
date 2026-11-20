@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Treningi</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --line: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-text: #0b1220;
+    --ok: #4ade80;
+    --err: #f87171;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.4;
+  }
+  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 120px; }
+  h1 { margin: 0 0 4px; font-size: 1.6rem; }
+  .subtitle { margin: 0 0 20px; color: var(--muted); }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+  input, textarea, select {
+    width: 100%;
+    background: var(--bg);
+    color: var(--text);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font: inherit;
+  }
+  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  textarea { resize: vertical; min-height: 60px; }
+  input[type=number]::-webkit-inner-spin-button,
+  input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+  .hidden { display: none; }
+  .hint { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
+  .exercise-head { display: flex; gap: 8px; align-items: end; margin-bottom: 12px; }
+  .exercise-head .grow { flex: 1; min-width: 0; }
+  .exercise-head .mode-box { width: 150px; }
+  @media (max-width: 480px) {
+    .exercise-head { display: grid; grid-template-columns: 1fr 30px; }
+    .exercise-head .grow { order: 1; }
+    .exercise-head .remove-exercise { order: 2; }
+    .exercise-head .mode-box { order: 3; grid-column: 1 / -1; width: auto; }
+  }
+  .set-labels, .set {
+    display: grid;
+    grid-template-columns: 22px 1fr 1.5fr 30px;
+    gap: 8px;
+    align-items: center;
+  }
+  .set-labels { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
+  .sets { display: grid; gap: 8px; }
+  .set .num { color: var(--muted); text-align: center; }
+  .num-field { display: flex; gap: 4px; align-items: stretch; }
+  .num-field input { min-width: 0; padding: 8px 4px; text-align: center; }
+  .num-field input.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .num-field .step {
+    flex: 0 0 24px;
+    padding: 0;
+    font-size: 1.1rem;
+    line-height: 1;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .num-field .step:hover { color: var(--accent); border-color: var(--accent); filter: none; }
+  .num-field.disabled .step { opacity: 0.35; pointer-events: none; }
+  .num-field input:disabled { opacity: 0.6; }
+  .num-field { flex: 1; min-width: 0; }
+  .weight-cell { display: flex; gap: 4px; align-items: stretch; min-width: 0; }
+  .bw {
+    flex: 0 0 34px;
+    padding: 0;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .bw.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); filter: none; }
+  .bar-inner button { width: 100%; }
+  .add-set {
+    margin-top: 10px;
+    width: 100%;
+    background: transparent;
+    border: 1px dashed var(--line);
+    color: var(--muted);
+  }
+  .note-field { margin-top: 12px; }
+  .prev { margin: 10px 0 0; font-size: 0.85rem; color: var(--muted); }
+  .prev .up { color: var(--ok); font-weight: 600; }
+  .prev .down { color: var(--err); font-weight: 600; }
+  button {
+    font: inherit;
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    cursor: pointer;
+    color: var(--text);
+    background: var(--line);
+  }
+  button:hover { filter: brightness(1.15); }
+  button.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
+  button.icon { padding: 8px 0; width: 30px; background: transparent; color: var(--muted); }
+  button.icon:hover { color: var(--err); }
+  button:disabled { opacity: 0.5; cursor: not-allowed; }
+  .add-exercise { width: 100%; margin-bottom: 16px; }
+  .bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: var(--card);
+    border-top: 1px solid var(--line);
+    padding: 12px 16px;
+  }
+  .bar-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .summary { font-size: 0.9rem; color: var(--muted); }
+  .summary strong { color: var(--text); }
+  .summary .up { color: var(--ok); }
+  .summary .down { color: var(--err); }
+  .notice { padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
+  .notice.show { display: block; }
+  .notice.warn { background: #422006; color: #fdba74; }
+  .notice.ok { background: #052e16; color: var(--ok); }
+  .notice.err { background: #450a0a; color: var(--err); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Treningi</h1>
+  <p class="subtitle">Wybierz trening, popraw wyniki i zapisz. Każdy zapis dopisuje nowy wpis z datą do zakładki tego treningu.</p>
+
+  <div id="configWarning" class="notice warn">
+    Brak adresu skryptu Google. Wklej adres aplikacji internetowej Apps Script do stałej
+    <code>SCRIPT_URL</code> w pliku index.html, żeby zapisywanie i wczytywanie działało.
+  </div>
+  <div id="status" class="notice" role="status"></div>
+
+  <form id="form" autocomplete="off">
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="training">Trening</label>
+          <select id="training"></select>
+        </div>
+        <div>
+          <label for="date">Data</label>
+          <input id="date" type="date" required>
+        </div>
+      </div>
+      <div id="newNameBox" class="hidden" style="margin-bottom:12px">
+        <label for="newName">Nazwa nowego treningu (będzie nazwą zakładki w arkuszu)</label>
+        <input id="newName" type="text" placeholder="np. FBW A, Push, Nogi">
+      </div>
+      <div>
+        <label for="notes">Notatki do całego treningu (opcjonalnie)</label>
+        <textarea id="notes" placeholder="Samopoczucie, ogólne wrażenia, plan na następny raz…"></textarea>
+      </div>
+      <p class="hint" id="lastInfo"></p>
+    </div>
+
+    <div id="exercises"></div>
+    <datalist id="exerciseNames"></datalist>
+
+    <button type="button" id="addExercise" class="add-exercise">+ Dodaj ćwiczenie</button>
+
+    <div class="bar">
+      <div class="bar-inner">
+        <button type="submit" class="primary" id="submit">Zapisz trening</button>
+      </div>
+    </div>
+  </form>
+</main>
+
+<script>
+  // Address of the Google Apps Script web app (see apps-script/Code.gs).
+  const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
+
+  const NEW_VALUE = '__new__';
+  const LAST_SELECTED_KEY = 'trainings.lastSelected';
+
+  // Step of the small − / + buttons.
+  const STEP = { reps: 1, time: 5, weight: 2.5 };
+
+  const $ = (id) => document.getElementById(id);
+  const form = $('form');
+  const trainingSelect = $('training');
+  const exercisesEl = $('exercises');
+  const submitBtn = $('submit');
+
+  // trainings = [{ name, lastDate, exercises: [{ name, mode, note, sets: [{ reps, seconds, weight }] }] }]
+  let trainings = [];
+
+  const isConfigured = () => !SCRIPT_URL.startsWith('PASTE_');
+  const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
+
+  function showStatus(kind, text) {
+    const el = $('status');
+    el.className = 'notice show ' + kind;
+    el.textContent = text;
+  }
+
+  function currentTraining() {
+    return trainings.find((t) => t.name === trainingSelect.value) || null;
+  }
+
+  function isNewTraining() {
+    return trainingSelect.value === NEW_VALUE;
+  }
+
+  function round(n) { return Math.round(n * 100) / 100; }
+  function formatNumber(n) { return round(n).toLocaleString('pl-PL'); }
+
+  function formatTime(seconds) {
+    if (seconds < 60) return seconds + '"';
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return minutes + "'" + (rest ? String(rest).padStart(2, '0') + '"' : '');
+  }
+
+  // ---------- loading ----------
+
+  async function loadTrainings() {
+    if (!isConfigured()) { trainings = []; return; }
+    const response = await fetch(SCRIPT_URL + '?action=list');
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+    trainings = result.trainings;
+  }
+
+  function renderTrainingSelect(selectedName) {
+    trainingSelect.innerHTML = '';
+    trainings.forEach((t) => {
+      const option = document.createElement('option');
+      option.value = t.name;
+      option.textContent = t.name;
+      trainingSelect.appendChild(option);
+    });
+    const newOption = document.createElement('option');
+    newOption.value = NEW_VALUE;
+    newOption.textContent = '➕ Nowy trening…';
+    trainingSelect.appendChild(newOption);
+
+    const known = trainings.some((t) => t.name === selectedName);
+    trainingSelect.value = known ? selectedName : (trainings.length ? trainings[0].name : NEW_VALUE);
+
+    // Suggestions for exercise names come from every training in the sheet.
+    const names = new Set();
+    trainings.forEach((t) => t.exercises.forEach((e) => names.add(e.name)));
+    const list = $('exerciseNames');
+    list.innerHTML = '';
+    [...names].sort().forEach((n) => {
+      const option = document.createElement('option');
+      option.value = n;
+      list.appendChild(option);
+    });
+  }
+
+  // ---------- exercises and sets ----------
+
+  function findPrevious(name) {
+    const training = currentTraining();
+    if (!training || !name) return null;
+    const key = name.trim().toLowerCase();
+    return training.exercises.find((e) => e.name.toLowerCase() === key) || null;
+  }
+
+  function numberField(cls, step, min) {
+    return '<div class="num-field">' +
+      '<button type="button" class="step" data-dir="-1" tabindex="-1" aria-label="Mniej">−</button>' +
+      '<input type="number" class="' + cls + '" inputmode="decimal" min="' + min + '" step="any" data-step="' + step + '" data-min="' + min + '">' +
+      '<button type="button" class="step" data-dir="1" tabindex="-1" aria-label="Więcej">+</button>' +
+      '</div>';
+  }
+
+  function modeOf(card) {
+    return card.querySelector('.mode').value; // 'reps' | 'time'
+  }
+
+  function applyMode(card) {
+    const timed = modeOf(card) === 'time';
+    card.querySelector('.main-label').textContent = timed ? 'Czas (sekundy)' : 'Powtórzenia';
+    card.querySelectorAll('.set .main').forEach((input) => {
+      input.dataset.step = timed ? STEP.time : STEP.reps;
+      input.placeholder = timed ? 'sek.' : 'powt.';
+    });
+  }
+
+  function renumber(card) {
+    card.querySelectorAll('.set').forEach((row, i) => {
+      row.querySelector('.num').textContent = i + 1;
+    });
+  }
+
+  function setBodyweight(row, on) {
+    const input = row.querySelector('.weight');
+    const button = row.querySelector('.bw');
+    row.dataset.bw = on ? '1' : '';
+    button.classList.toggle('on', on);
+    button.setAttribute('aria-pressed', on ? 'true' : 'false');
+    row.querySelector('.weight-cell .num-field').classList.toggle('disabled', on);
+    input.disabled = on;
+    if (on) input.value = '';
+    input.placeholder = on ? 'BW' : 'kg';
+  }
+
+  function createSet(card, data) {
+    const timed = modeOf(card) === 'time';
+    const row = document.createElement('div');
+    row.className = 'set';
+    row.innerHTML =
+      '<span class="num"></span>' +
+      numberField('main', timed ? STEP.time : STEP.reps, 1) +
+      '<div class="weight-cell">' + numberField('weight', STEP.weight, 0) +
+        '<button type="button" class="bw" aria-pressed="false">BW</button></div>' +
+      '<button type="button" class="icon remove-set" title="Usuń serię" aria-label="Usuń serię">✕</button>';
+    const main = row.querySelector('.main');
+    main.placeholder = timed ? 'sek.' : 'powt.';
+    row.querySelector('.weight').placeholder = 'kg';
+    if (data) {
+      const value = timed ? data.seconds : data.reps;
+      main.value = value ? value : '';
+      if (data.weight === 'BW') setBodyweight(row, true);
+      else row.querySelector('.weight').value = data.weight === null || data.weight === undefined ? '' : data.weight;
+    }
+    row.querySelector('.remove-set').addEventListener('click', () => {
+      row.remove();
+      renumber(card);
+      refresh();
+    });
+    card.querySelector('.sets').appendChild(row);
+    renumber(card);
+  }
+
+  function createExercise(data) {
+    const card = document.createElement('div');
+    card.className = 'card exercise';
+    card.innerHTML =
+      '<div class="exercise-head">' +
+        '<div class="grow"><label>Ćwiczenie</label>' +
+        '<input type="text" class="name" list="exerciseNames" placeholder="np. Przysiad ze sztangą"></div>' +
+        '<div class="mode-box"><label>Mierzone</label>' +
+        '<select class="mode"><option value="reps">powtórzeniami</option><option value="time">czasem</option></select></div>' +
+        '<button type="button" class="icon remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
+      '</div>' +
+      '<div class="set-labels"><span>#</span><span class="main-label">Powtórzenia</span><span>Ciężar (kg)</span><span></span></div>' +
+      '<div class="sets"></div>' +
+      '<button type="button" class="add-set">+ Dodaj serię</button>' +
+      '<div class="note-field"><label>Uwagi do ćwiczenia (opcjonalnie)</label>' +
+      '<input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>' +
+      '<p class="prev"></p>';
+
+    card.querySelector('.name').value = (data && data.name) || '';
+    card.querySelector('.mode').value = data && data.mode === 'time' ? 'time' : 'reps';
+    applyMode(card);
+
+    card.querySelector('.remove-exercise').addEventListener('click', () => {
+      card.remove();
+      refresh();
+    });
+    card.querySelector('.add-set').addEventListener('click', () => {
+      // A new set starts with the values of the previous one, so only changes need typing.
+      const rows = card.querySelectorAll('.set');
+      const last = rows[rows.length - 1];
+      if (last) {
+        const timed = modeOf(card) === 'time';
+        const main = last.querySelector('.main').value;
+        const weight = last.dataset.bw ? 'BW' : last.querySelector('.weight').value;
+        createSet(card, {
+          reps: timed ? 0 : Number(main),
+          seconds: timed ? Number(main) : 0,
+          weight: weight === 'BW' ? 'BW' : (weight === '' ? null : Number(weight))
+        });
+      } else {
+        createSet(card, null);
+      }
+      refresh();
+    });
+
+    const sets = data && data.sets && data.sets.length ? data.sets : [null];
+    sets.forEach((s) => createSet(card, s));
+    exercisesEl.appendChild(card);
+    return card;
+  }
+
+  function readCard(card) {
+    const timed = modeOf(card) === 'time';
+    const read = (el) => (el.value === '' ? NaN : Number(el.value));
+    const sets = [];
+    card.querySelectorAll('.set').forEach((row) => {
+      sets.push({
+        value: read(row.querySelector('.main')),
+        weight: row.dataset.bw ? 'BW' : read(row.querySelector('.weight'))
+      });
+    });
+    return {
+      name: card.querySelector('.name').value.trim(),
+      mode: timed ? 'time' : 'reps',
+      note: card.querySelector('.note-input').value.trim(),
+      sets
+    };
+  }
+
+  // Previous sets in the same shape as readCard: { value, weight } (weight NaN = none).
+  function previousSets(previous) {
+    return previous.sets.map((s) => ({
+      value: previous.mode === 'time' ? s.seconds : s.reps,
+      weight: s.weight === null || s.weight === undefined ? NaN : s.weight
+    }));
+  }
+
+  function describeSets(previous) {
+    const sets = previousSets(previous);
+    const groups = [];
+    sets.forEach((s) => {
+      const last = groups[groups.length - 1];
+      if (last && last.value === s.value && Object.is(last.weight, s.weight)) last.count += 1;
+      else groups.push({ value: s.value, weight: s.weight, count: 1 });
+    });
+    return groups.map((g) => {
+      let text = previous.mode === 'time' ? formatTime(g.value) : String(g.value);
+      if (g.weight === 'BW') text += ' × BW';
+      else if (!Number.isNaN(g.weight) && g.weight > 0) text += ' × ' + formatNumber(g.weight) + ' kg';
+      return (g.count > 1 ? g.count + ' × ' : '') + text;
+    }).join(' · ');
+  }
+
+  function summarize(mode, sets) {
+    let top = 0;
+    let total = 0;
+    sets.forEach((s) => {
+      if (typeof s.weight === 'number' && !Number.isNaN(s.weight)) top = Math.max(top, s.weight);
+      if (!Number.isNaN(s.value)) total += s.value;
+    });
+    return { mode, top, total, count: sets.length };
+  }
+
+  function diffParts(before, now) {
+    const parts = [{ diff: round(now.top - before.top), unit: 'kg' }];
+    if (before.mode === now.mode) parts.push({ diff: round(now.total - before.total), unit: now.mode === 'time' ? 's' : 'powt.' });
+    parts.push({ diff: round(now.count - before.count), unit: 'serii' });
+    return parts.filter((p) => p.diff !== 0);
+  }
+
+  function updateCard(card) {
+    const current = readCard(card);
+    const previous = findPrevious(current.name);
+    const hint = card.querySelector('.prev');
+    hint.textContent = '';
+
+    const prevSets = previous && previous.mode === current.mode ? previousSets(previous) : null;
+    card.querySelectorAll('.set').forEach((row, i) => {
+      const mainChanged = prevSets && !Number.isNaN(current.sets[i].value) && (!prevSets[i] || current.sets[i].value !== prevSets[i].value);
+      const prevWeight = prevSets && prevSets[i] ? prevSets[i].weight : NaN;
+      const nowWeight = current.sets[i].weight;
+      const weightChanged = prevSets && !Number.isNaN(nowWeight) && !(nowWeight === prevWeight);
+      row.querySelector('.main').classList.toggle('changed', Boolean(mainChanged));
+      row.querySelector('.weight').classList.toggle('changed', Boolean(weightChanged));
+    });
+
+    if (!previous) {
+      if (!isNewTraining() && current.name) hint.textContent = 'Nowe ćwiczenie w tym treningu — brak wcześniejszych wyników.';
+      return;
+    }
+
+    hint.append('Poprzednio: ' + describeSets(previous));
+    const validSets = current.sets.filter((s) => !Number.isNaN(s.value));
+    if (validSets.length) {
+      const parts = diffParts(summarize(previous.mode, previousSets(previous)), summarize(current.mode, validSets));
+      const result = document.createElement('span');
+      if (!parts.length) {
+        result.textContent = ' · bez zmian';
+      } else {
+        result.className = parts[0].diff > 0 ? 'up' : 'down';
+        result.textContent = ' → ' + parts.map((p) => (p.diff > 0 ? '+' : '') + formatNumber(p.diff) + ' ' + p.unit).join(', ');
+      }
+      hint.appendChild(result);
+    }
+    if (previous.note) {
+      hint.appendChild(document.createElement('br'));
+      hint.append('Poprzednia uwaga: ' + previous.note);
+    }
+  }
+
+  function renderExercises() {
+    exercisesEl.innerHTML = '';
+    const training = currentTraining();
+    $('newNameBox').classList.toggle('hidden', !isNewTraining());
+    if (training) {
+      training.exercises.forEach(createExercise);
+      $('lastInfo').textContent = training.lastDate
+        ? 'Formularz wypełniony wynikami z ostatniego treningu (' + training.lastDate + '). Zmień to, co poszło inaczej.'
+        : 'Ten trening nie ma jeszcze żadnych wpisów.';
+    } else {
+      createExercise();
+      $('lastInfo').textContent = 'Nowy trening: pierwszy zapis stworzy nową zakładkę i będzie punktem odniesienia.';
+    }
+    refresh();
+  }
+
+  function refresh() {
+    exercisesEl.querySelectorAll('.exercise').forEach(updateCard);
+  }
+
+  // ---------- saving ----------
+
+  function collectValid() {
+    const valid = [];
+    exercisesEl.querySelectorAll('.exercise').forEach((card) => {
+      const c = readCard(card);
+      const sets = c.sets
+        .filter((s) => s.value > 0)
+        .map((s) => ({
+          reps: c.mode === 'reps' ? s.value : null,
+          seconds: c.mode === 'time' ? s.value : null,
+          weight: s.weight === 'BW' ? 'BW' : (Number.isNaN(s.weight) ? null : s.weight)
+        }));
+      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, note: c.note, sets });
+    });
+    return valid;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!isConfigured()) { showStatus('err', 'Najpierw wklej adres skryptu Google do SCRIPT_URL w index.html.'); return; }
+
+    const creating = isNewTraining();
+    const training = creating ? $('newName').value.trim() : trainingSelect.value;
+    if (!training) { showStatus('err', 'Podaj nazwę nowego treningu.'); return; }
+    if (creating && trainings.some((t) => t.name.toLowerCase() === training.toLowerCase())) {
+      showStatus('err', 'Trening o tej nazwie już istnieje — wybierz go z listy.');
+      return;
+    }
+    if (!$('date').value) { showStatus('err', 'Wybierz datę.'); return; }
+    const exercises = collectValid();
+    if (!exercises.length) { showStatus('err', 'Dodaj co najmniej jedno ćwiczenie z nazwą i serią (powtórzenia lub czas).'); return; }
+
+    submitBtn.disabled = true;
+    showStatus('warn', 'Zapisuję…');
+    try {
+      // A plain-text body keeps this a "simple" request, so Apps Script needs no CORS preflight.
+      const response = await fetch(SCRIPT_URL, {
+        method: 'POST',
+        body: JSON.stringify({
+          training,
+          create: creating,
+          date: $('date').value,
+          notes: $('notes').value.trim(),
+          exercises
+        })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+
+      await loadTrainings();
+      renderTrainingSelect(result.sheet);
+      try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
+      $('notes').value = '';
+      $('newName').value = '';
+      $('date').value = today();
+      renderExercises();
+      showStatus('ok', 'Zapisano w zakładce „' + result.sheet + '” (' + exercises.length + ' ćw.).');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (error) {
+      showStatus('err', 'Nie udało się zapisać: ' + error.message + ' Dane zostały na stronie, spróbuj ponownie.');
+    } finally {
+      submitBtn.disabled = false;
+    }
+  });
+
+  // ---------- wiring ----------
+
+  trainingSelect.addEventListener('change', () => {
+    try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
+    renderExercises();
+  });
+  form.addEventListener('input', refresh);
+  exercisesEl.addEventListener('change', (event) => {
+    if (event.target.classList.contains('mode')) {
+      applyMode(event.target.closest('.exercise'));
+      refresh();
+    }
+  });
+  exercisesEl.addEventListener('click', (event) => {
+    const bw = event.target.closest('.bw');
+    if (bw) {
+      const row = bw.closest('.set');
+      setBodyweight(row, !row.dataset.bw);
+      refresh();
+      return;
+    }
+    const button = event.target.closest('.step');
+    if (!button) return;
+    const input = button.parentElement.querySelector('input');
+    if (input.disabled) return;
+    const current = input.value === '' ? 0 : Number(input.value);
+    const next = round(current + Number(input.dataset.step) * Number(button.dataset.dir));
+    input.value = Math.max(Number(input.dataset.min), next);
+    refresh();
+  });
+  $('addExercise').addEventListener('click', () => { createExercise(); refresh(); });
+
+  async function init() {
+    $('date').value = today();
+    if (!isConfigured()) $('configWarning').classList.add('show');
+    try {
+      showStatus('warn', 'Wczytuję treningi…');
+      await loadTrainings();
+      $('status').className = 'notice';
+    } catch (error) {
+      trainings = [];
+      showStatus('err', 'Nie udało się wczytać treningów: ' + error.message + ' Możesz dodać nowy trening albo odświeżyć stronę.');
+    }
+    let remembered = null;
+    try { remembered = localStorage.getItem(LAST_SELECTED_KEY); } catch (e) {}
+    renderTrainingSelect(remembered);
+    renderExercises();
+  }
+
+  init();
+</script>
+</body>
+</html>
