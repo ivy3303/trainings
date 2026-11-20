@@ -350,6 +350,13 @@
   .pair { display:flex; flex-direction:column; min-height:142px; }
   .pair textarea { flex:1; }
   .media-list:empty { display:none; }
+  /* which exercise a photo belongs to */
+  .media-ex { margin-top:10px; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
+  .media-ex select { width:auto; max-width:100%; min-width:130px; height:36px; padding:0 34px 0 14px; border-radius:999px; font-size:0.9rem; font-weight:600; color:var(--text); -webkit-appearance:none; appearance:none;
+    background:rgba(108,125,255,.22) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d5dcff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") right 10px center/16px no-repeat;
+    border:1px solid rgba(160,175,255,.35); }
+  .media-ex-name { max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:0.76rem; color:var(--muted); }
+  .media-ex-name:empty { display:none; }
   /* mood rows: lighter left-aligned sub-titles, the picked word stays on the right */
   .mood-head { position:relative; justify-content:flex-start; margin:0 2px 6px; }
   .mood-label { font-size:1rem; font-weight:400; color:var(--blue); letter-spacing:.02em; }
@@ -1139,7 +1146,7 @@
 
   const UPLOAD_CHUNK = 6 * 256 * 1024; // Drive wants multiples of 256 KiB
   const MEDIA_MAX = 20;
-  let media = []; // [{ key, file, status: 'queued' | 'uploading' | 'done' | 'error', progress, id, error }]
+  let media = []; // [{ key, file, status: 'queued' | 'uploading' | 'done' | 'error', progress, id, error, exercise (name or '' = whole training) }]
   let pumping = false;
 
   const pinValue = () => $('pin').value.trim();
@@ -1250,27 +1257,73 @@
     return bytes >= 1048576 ? (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' kB';
   }
 
+  // The exercises on the page that a photo can belong to: label = code (or the name), name = the exercise.
+  function exerciseChoices() {
+    const out = [];
+    exercisesEl.querySelectorAll('.exercise').forEach((card) => {
+      const c = readCard(card);
+      if (c.name) out.push({ name: c.name, label: c.code || c.name });
+    });
+    return out;
+  }
+
+  function fillExerciseSelect(select, item) {
+    const choices = exerciseChoices();
+    const signature = choices.map((c) => c.label + '|' + c.name).join('\n');
+    if (select.dataset.signature !== signature) {
+      select.dataset.signature = signature;
+      select.innerHTML = '';
+      const whole = document.createElement('option');
+      whole.value = '';
+      whole.textContent = 'Cały trening';
+      select.appendChild(whole);
+      choices.forEach((c) => {
+        const option = document.createElement('option');
+        option.value = c.name;
+        option.textContent = c.label;
+        select.appendChild(option);
+      });
+    }
+    // An exercise that was renamed or removed meanwhile no longer applies.
+    if (item.exercise && !choices.some((c) => c.name === item.exercise)) item.exercise = '';
+    select.value = item.exercise;
+    select.closest('.media-ex').querySelector('.media-ex-name').textContent = item.exercise;
+  }
+
+  function buildMediaItem(item) {
+    const li = document.createElement('li');
+    li.dataset.key = item.key;
+    li.innerHTML =
+      '<div><span class="media-name"></span><span class="media-state"></span><div class="media-track"><i></i></div>' +
+        '<div class="media-ex"><select class="media-ex-select" aria-label="Do którego ćwiczenia należy plik"></select><span class="media-ex-name"></span></div></div>' +
+      '<span class="media-slot"></span>' +
+      '<button type="button" class="media-remove" aria-label="Usuń z listy">✕</button>';
+    return li;
+  }
+
+  // Updates the list in place, so a select that is open is not torn down by the upload progress.
   function renderMedia() {
     const list = $('mediaList');
-    list.innerHTML = '';
-    media.forEach((item) => {
-      const li = document.createElement('li');
+    const keys = new Set(media.map((m) => m.key));
+    [...list.children].forEach((li) => { if (!keys.has(li.dataset.key)) li.remove(); });
+    media.forEach((item, index) => {
+      let li = [...list.children].find((el) => el.dataset.key === item.key);
+      const fresh = !li;
+      if (fresh) li = buildMediaItem(item);
+      if (list.children[index] !== li) list.insertBefore(li, list.children[index] || null);
       li.className = 'media-item ' + item.status;
-      li.dataset.key = item.key;
       const state = {
         queued: 'Czeka na wysłanie…',
         uploading: 'Wysyłam… ' + Math.round(item.progress * 100) + '%',
         done: 'Wysłano na Dysk Google ✓',
         error: item.error || 'Nie udało się wysłać.'
       }[item.status];
-      li.innerHTML =
-        '<div><span class="media-name"></span><span class="media-state"></span><div class="media-track"><i></i></div></div>' +
-        (item.status === 'error' ? '<button type="button" class="media-retry">Ponów</button>' : '<span></span>') +
-        '<button type="button" class="media-remove" aria-label="Usuń z listy">✕</button>';
       li.querySelector('.media-name').textContent = item.file.name + ' · ' + formatSize(item.file.size);
       li.querySelector('.media-state').textContent = state;
       li.querySelector('.media-track i').style.width = (item.status === 'done' ? 100 : Math.round(item.progress * 100)) + '%';
-      list.appendChild(li);
+      li.querySelector('.media-slot').innerHTML = item.status === 'error' ? '<button type="button" class="media-retry">Ponów</button>' : '';
+      const select = li.querySelector('.media-ex-select');
+      if (document.activeElement !== select) fillExerciseSelect(select, item);
       if (!item.shown) {
         item.shown = true;
         animate(li, [{ opacity: 0, transform: 'translateY(10px) scale(0.97)' }, { opacity: 1, transform: 'none' }], { duration: 320 });
@@ -1283,13 +1336,31 @@
     updatePinBox();
   }
 
+  // Which exercise a file belongs to; the options are refreshed when the list is opened.
+  $('mediaList').addEventListener('change', (event) => {
+    const select = event.target.closest('.media-ex-select');
+    if (!select) return;
+    const item = media.find((m) => m.key === select.closest('.media-item').dataset.key);
+    if (!item) return;
+    item.exercise = select.value;
+    select.closest('.media-ex').querySelector('.media-ex-name').textContent = item.exercise;
+  });
+  ['pointerdown', 'focusin'].forEach((type) => {
+    $('mediaList').addEventListener(type, (event) => {
+      const select = event.target.closest && event.target.closest('.media-ex-select');
+      if (!select) return;
+      const item = media.find((m) => m.key === select.closest('.media-item').dataset.key);
+      if (item) fillExerciseSelect(select, item);
+    });
+  });
+
   $('pickMedia').addEventListener('click', () => $('media').click());
   $('media').addEventListener('change', (event) => {
     const files = [...event.target.files];
     event.target.value = '';
     files.forEach((file) => {
       if (media.length >= MEDIA_MAX) return;
-      media.push({ key: String(Date.now()) + Math.random().toString(36).slice(2), file, status: 'queued', progress: 0, id: '', error: '' });
+      media.push({ key: String(Date.now()) + Math.random().toString(36).slice(2), file, status: 'queued', progress: 0, id: '', error: '', exercise: '' });
     });
     renderMedia();
     pumpUploads();
@@ -1384,7 +1455,7 @@
           exercises,
           wellness: wellnessPayload(),
           emails,
-          media: media.map((m) => ({ id: m.id })),
+          media: media.map((m) => ({ id: m.id, exercise: m.exercise })),
           pin: emails.length || media.length ? pinValue() : ''
         })
       });

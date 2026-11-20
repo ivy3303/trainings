@@ -8,6 +8,7 @@
  *        |              |       | Powt./czas | Kg | Powt./czas | Kg | ...
  *   A0   | Wioślarz  |   1   |   120 s    |    |            |    |
  *    ...
+ *   UWAGI (merged A:C)     |  notes of the whole training, one merged cell per date   (always the last row)
  *
  * "Blok" holds the exercise code from the plan: block letter + section number + optional
  * variant letter, e.g. A1, C2a, C2b. Variants of one section (C2a / C2b) are alternatives:
@@ -20,8 +21,8 @@
  * Exercises and sets are rows; every saved session adds two columns on the right
  * (reps or seconds, and kg). Reps are coloured against the previous date:
  * green = more, red = fewer, blue = the same. Remarks sit in cell notes:
- * the exercise remark on the first set's reps cell, the session remark (and links to photos
- * and videos) on the date.
+ * the exercise remark on the first set's reps cell, the links to photos and videos on the date.
+ * The remark on the whole training goes to the UWAGI row at the bottom.
  *
  * GET  ?action=list  -> { ok, version, trainings: [{ name, lastDate, exercises }] }
  *                       exercises = every exercise of the training with its most recent results:
@@ -33,7 +34,7 @@
  *     wellness: { energy, sleep, food (each 1-3), note (text) } (all optional),
  *     exercises: [{ name, mode: "reps" | "time", note, code (e.g. "A1", "C2b"; optional),
  *                   sets: [{ reps, seconds, weight }] }],
- *     emails: ["a@b.pl"], media: [{ id }], pin }
+ *     emails: ["a@b.pl"], media: [{ id, exercise (name of an exercise of this session; optional) }], pin }
  *   create=true makes a new tab, create=false adds a column pair to an existing one.
  *   mode "reps" uses sets[].reps, mode "time" uses sets[].seconds;
  *   weight is optional: a number (kg), "BW" or empty.
@@ -60,6 +61,8 @@ var WEIGHT_FORMAT = '0.0#';
 var COLOR_NAVY = '#0f2a4a';
 var COLOR_SUBHEADER = '#e4e9f2';
 var MEDIA_FOLDER = 'Treningi – media';
+var NOTES_LABEL = 'UWAGI';
+var COLOR_NOTES = '#f6f7fb';
 var WELLNESS_BLOCK = 'Stan';
 var WELLNESS_LABEL = 'Samopoczucie';
 var WELLNESS = [
@@ -324,6 +327,7 @@ function validate_(data) {
   if ((data.media || []).length > MAX_MEDIA) throw new Error('Maksymalnie ' + MAX_MEDIA + ' plików.');
   (data.media || []).forEach(function (item) {
     if (!item || !/^[A-Za-z0-9_-]{10,}$/.test(String(item.id))) throw new Error('Nieprawidłowy plik.');
+    if (item.exercise !== undefined && typeof item.exercise !== 'string') throw new Error('Nieprawidłowe ćwiczenie przy pliku.');
   });
   data.exercises.forEach(function (exercise) {
     var label = '"' + exercise.name + '"';
@@ -366,6 +370,7 @@ function createTrainingSheet_(spreadsheet, name) {
   sheet.setFrozenColumns(3);
   [60, 340, 60].forEach(function (width, index) { sheet.setColumnWidth(index + 1, width); });
   sheet.setTabColor(COLOR_NAVY);
+  ensureNotesRow_(sheet);
   return sheet;
 }
 
@@ -412,6 +417,49 @@ function ensureRows_(sheet, timeZone, name, code, setCount) {
   return own.slice(0, setCount).map(function (entry) { return entry.row; });
 }
 
+/** Row of the closing UWAGI row (notes of whole trainings), 0 when the tab has none yet. */
+function findNotesRow_(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= HEADER_ROWS) return 0;
+  var left = sheet.getRange(HEADER_ROWS + 1, 1, lastRow - HEADER_ROWS, 1).getValues();
+  for (var i = left.length - 1; i >= 0; i--) {
+    if (String(left[i][0]).trim().toUpperCase() === NOTES_LABEL) return HEADER_ROWS + 1 + i;
+  }
+  return 0;
+}
+
+/** The UWAGI row is the last row of a tab; tabs made before it existed get it under the last exercise. */
+function ensureNotesRow_(sheet) {
+  var row = findNotesRow_(sheet);
+  if (row) return row;
+  row = Math.max(sheet.getLastRow(), HEADER_ROWS) + 1;
+  if (row > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 1);
+  var label = sheet.getRange(row, 1, 1, 3);
+  label.merge();
+  sheet.getRange(row, 1).setValue(NOTES_LABEL);
+  label.setBackground(COLOR_SUBHEADER).setFontWeight('bold').setHorizontalAlignment('center').setVerticalAlignment('middle');
+  sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), 3))
+    .setBorder(true, null, null, null, null, null, COLOR_NAVY, SpreadsheetApp.BorderStyle.SOLID);
+  return row;
+}
+
+/** The note on the whole training of a date: one merged cell (reps + kg columns) in the UWAGI row. */
+function writeNotes_(sheet, row, col, text) {
+  var note = text ? String(text).trim() : '';
+  var cell = sheet.getRange(row, col, 1, 2);
+  cell.merge();
+  cell.setNumberFormat('@'); // plain text, so a note starting with "=" is never a formula
+  sheet.getRange(row, col).setValue(note);
+  cell.setBackground(COLOR_NOTES).setFontWeight('normal').setWrap(true)
+    .setHorizontalAlignment('left').setVerticalAlignment('top');
+  if (note) {
+    // merged cells do not auto-fit: about 22 characters fit on a line of the two columns
+    var lines = 0;
+    note.split('\n').forEach(function (paragraph) { lines += Math.max(1, Math.ceil(paragraph.length / 22)); });
+    sheet.setRowHeight(row, Math.min(Math.max(sheet.getRowHeight(row), lines * 16 + 10), 400));
+  }
+}
+
 /** The second header row of a new date: three coloured dots (energy, sleep, food), words and remark in the note. */
 function writeWellness_(sheet, col, mood) {
   var remark = String(mood.note || '').trim();
@@ -448,6 +496,7 @@ function appendSession_(sheet, data, timeZone, files) {
   });
 
   // 2. The new column pair goes to the right of the last session.
+  var notesRow = ensureNotesRow_(sheet);
   var layout = readLayout_(sheet, timeZone);
   var col = Math.max(sheet.getLastColumn(), FIRST_SESSION_COL - 1) + 1;
   var lastRow = Math.max(sheet.getLastRow(), HEADER_ROWS + 1);
@@ -489,6 +538,7 @@ function appendSession_(sheet, data, timeZone, files) {
   body.setBackgrounds(backgrounds);
   sheet.getRange(HEADER_ROWS + 1, col, count, 1).setNotes(notes.map(function (n) { return [n[0]]; }));
   body.setHorizontalAlignment('center');
+  writeNotes_(sheet, notesRow, col, data.notes);
   // 3. Header of the new date.
   var head = sheet.getRange(1, col, 1, 2);
   head.merge();
@@ -496,9 +546,8 @@ function appendSession_(sheet, data, timeZone, files) {
     .setBackground(COLOR_NAVY).setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sheet.getRange(1, col).setValue(date);
   var headNote = [];
-  if (data.notes && String(data.notes).trim()) headNote.push(String(data.notes).trim());
   if (files && files.length) {
-    headNote.push('Zdjęcia i filmy:\n' + files.map(function (file) { return '- ' + file.name + ': ' + file.url; }).join('\n'));
+    headNote.push('Zdjęcia i filmy:\n' + files.map(function (file) { return fileLine_(file, data); }).join('\n'));
   }
   if (headNote.length) sheet.getRange(1, col).setNote(headNote.join('\n\n'));
   writeWellness_(sheet, col, data.wellness || {});
@@ -508,6 +557,24 @@ function appendSession_(sheet, data, timeZone, files) {
   sheet.setColumnWidth(col + 1, 70);
 
   formatLeft_(sheet, timeZone);
+}
+
+/** "- foto.jpg [A1]: link" - the exercise code (or name) in brackets when the file belongs to an exercise. */
+function fileLine_(file, data) {
+  var label = '';
+  var match = fileExercise_(file, data.exercises);
+  if (match) label = normalizeCode_(match.code || match.group) || String(match.name).trim();
+  return '- ' + file.name + (label ? ' [' + label + ']' : '') + ': ' + file.url;
+}
+
+/** The exercise of this session a file was assigned to, or null (whole training). */
+function fileExercise_(file, exercises) {
+  if (!file.exercise) return null;
+  var key = String(file.exercise).toLowerCase();
+  for (var i = 0; i < exercises.length; i++) {
+    if (String(exercises[i].name).trim().toLowerCase() === key) return exercises[i];
+  }
+  return null;
 }
 
 /** Colour of a reps cell against the latest earlier value in the same row (null = nothing to compare). */
@@ -624,7 +691,9 @@ function mediaFiles_(media) {
     var file = DriveApp.getFileById(String(item.id));
     var parents = file.getParents();
     while (parents.hasNext()) {
-      if (parents.next().getId() === folderId) return { id: file.getId(), name: file.getName(), url: fileUrl_(file.getId()), file: file };
+      if (parents.next().getId() === folderId) {
+        return { id: file.getId(), name: file.getName(), url: fileUrl_(file.getId()), file: file, exercise: String(item.exercise || '').trim().slice(0, 200) };
+      }
     }
     throw new Error('Plik "' + file.getName() + '" nie jest w folderze "' + MEDIA_FOLDER + '".');
   });
@@ -674,6 +743,7 @@ function buildSummary_(data, sheetName, before, files) {
   if (mood.length || moodNote) blocks.push(mailMood_(wellness, moodNote));
 
   var sections = [];
+  var general = (files || []).filter(function (file) { return !fileExercise_(file, data.exercises); });
   data.exercises.forEach(function (exercise) {
     var mode = exercise.mode === 'time' ? 'time' : 'reps';
     var code = normalizeCode_(exercise.code || exercise.group);
@@ -693,22 +763,24 @@ function buildSummary_(data, sheetName, before, files) {
     }
     var name = String(exercise.name).trim();
     var remark = exercise.note ? String(exercise.note).trim() : '';
+    var own = (files || []).filter(function (file) { return fileExercise_(file, data.exercises) === exercise; });
     text.push((code ? code + '  ' : '') + name, '  ' + now + (prevText ? '   (poprzednio: ' + prevText + (diff ? ', ' + diff : ', bez zmian') + ')' : ''));
     if (remark) text.push('  Uwaga: ' + remark);
+    own.forEach(function (file) { text.push('  Zdjęcie: ' + file.name + ': ' + file.url); });
     text.push('');
     // Neighbouring exercises of one block (A1, A2 …) share a single card.
     var letter = code ? code.charAt(0) : '';
     var last = sections[sections.length - 1];
-    var row = mailExercise_(code, name, now, prevText, diff, remark);
+    var row = mailExercise_(code, name, now, prevText, diff, remark, own);
     if (letter && last && last.letter === letter) last.rows.push(row);
     else sections.push({ letter: letter, rows: [row] });
   });
   sections.forEach(function (section) { blocks.push(mailSection_(section.letter, section.rows)); });
 
-  if (files && files.length) {
+  if (general.length) {
     text.push('Zdjęcia i filmy:');
-    files.forEach(function (file) { text.push('- ' + file.name + ': ' + file.url); });
-    blocks.push(mailMedia_(files));
+    general.forEach(function (file) { text.push('- ' + file.name + ': ' + file.url); });
+    blocks.push(mailMedia_(general));
   }
 
   var count = data.exercises.length;
@@ -759,7 +831,7 @@ function mailSection_(letter, rows) {
 }
 
 /** One exercise inside a section card. */
-function mailExercise_(code, name, now, prevText, diff, remark) {
+function mailExercise_(code, name, now, prevText, diff, remark, files) {
   var color = MAIL_CHIP_COLORS[code.charAt(0)] || '#8e99c8';
   var chip = code
     ? '<span style="display:inline-block;background:' + color + ';border-radius:999px;padding:1px 10px;margin-right:8px;font-size:12px;line-height:20px;font-weight:700;color:#12162a">' + esc_(code) + '</span>'
@@ -771,14 +843,20 @@ function mailExercise_(code, name, now, prevText, diff, remark) {
       (prevText ? 'poprzednio: ' + esc_(prevText) : '') + (diff ? ' ' + diffHtml_(diff) : '') + '</div>';
   }
   if (remark) body += '<div style="margin-top:8px;font-size:13px;line-height:19px;color:#c6cdee;font-style:italic">' + esc_(remark) + '</div>';
+  if (files && files.length) body += '<div style="margin-top:10px">' + mailLinks_(files) + '</div>';
   return body;
 }
 
-function mailMedia_(files) {
-  var links = files.map(function (file) {
+/** Pills linking to photos and videos. */
+function mailLinks_(files) {
+  return files.map(function (file) {
     return '<a href="' + esc_(file.url) + '" style="display:inline-block;margin:0 6px 8px 0;padding:8px 14px;border:1.5px dashed #6f7fc0;border-radius:999px;color:#a9bcff;font-size:13px;font-weight:700;text-decoration:none">&#128247; ' + esc_(file.name) + '</a>';
   }).join('');
-  return mailCard_('', '<div style="font-size:15px;font-weight:700;color:#f4f6ff;margin:0 0 8px">Zdjęcia i filmy</div>' + links, '#33c6ff');
+}
+
+/** Card with the photos and videos of the whole training (those not assigned to an exercise). */
+function mailMedia_(files) {
+  return mailCard_('', '<div style="font-size:15px;font-weight:700;color:#f4f6ff;margin:0 0 8px">Zdjęcia i filmy</div>' + mailLinks_(files), '#33c6ff');
 }
 
 function setWeight_(weight) {
@@ -845,7 +923,7 @@ function esc_(value) {
 
 /** Run once from the editor (select "authorize" and press Run) to grant Drive and Mail access. */
 function authorize() {
-  DriveApp.getRootFolder();
+  mediaFolder_(); // creates the media folder, which asks for full Drive access
   MailApp.getRemainingDailyQuota();
   UrlFetchApp.fetch('https://www.googleapis.com/discovery/v1/apis', { muteHttpExceptions: true });
   ScriptApp.getOAuthToken();
