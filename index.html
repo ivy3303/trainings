@@ -5,21 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Treningi</title>
 <style>
+  /* Palette taken from the gym floor: concrete, chalk, iron and the colour-coded weight plates. */
   :root {
-    --bg: #e8ecf4;
-    --card: #ffffff;
-    --raised: #f1f4fa;
-    --line: #ccd5e5;
-    --text: #0e1a33;
-    --muted: #52627f;
-    --navy: #14284b;
-    --navy-soft: #e3e9f6;
-    --green: #1e6b45;
-    --green-soft: #ddf0e5;
-    --accent: var(--navy);
-    --accent-text: #ffffff;
-    --ok: #1e6b45;
-    --err: #b91c1c;
+    color-scheme: dark;
+    --bg: #1d2228;          /* graphite */
+    --card: #272e36;
+    --raised: #313a45;
+    --field: #1a1f25;
+    --line: #444f5c;
+    --text: #eef1f4;
+    --muted: #a6b1be;
+    --blue: #7fa6f5;        /* links and small controls */
+    --blue-btn: #3b6fd8;    /* main button */
+    --blue-btn-edge: #25489a;
+    --blue-soft: #2b3f63;
+    --yellow: #f2b705;
+    --yellow-soft: #4a3f14;
+    --green: #4fd09a;
+    --green-soft: #1f4636;
+    --red: #f0746c;
+    --red-soft: #4a2528;
   }
   * { box-sizing: border-box; }
   body {
@@ -30,21 +35,38 @@
     line-height: 1.4;
     -webkit-tap-highlight-color: transparent;
   }
-  main { max-width: 720px; margin: 0 auto; padding: 16px 12px 110px; }
-  @media (min-width: 745px) { h1 { margin: 0 0 14px; border-radius: 14px; } }
-  h1 { margin: -16px -12px 14px; padding: 16px 16px 14px; font-size: 1.4rem; color: #fff; background: var(--navy); border-bottom: 4px solid var(--green); }
+  main { max-width: 720px; margin: 0 auto; padding: 0 12px 110px; }
+
+  .masthead {
+    position: relative;
+    margin: 0 -12px 16px;
+    padding: 18px 16px 20px;
+    background: #14181d;
+    color: #fff;
+    overflow: hidden;
+  }
+  .masthead::after {
+    content: "";
+    position: absolute;
+    left: 0; right: 0; bottom: 0;
+    height: 4px;
+    background: var(--blue-btn);
+  }
+  .masthead h1 { margin: 0; font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em; }
+  @media (min-width: 745px) { .masthead { margin: 12px 0 16px; border-radius: 16px; } }
+
   .card {
     background: var(--card);
     border: 1px solid var(--line);
-    border-radius: 14px;
-    padding: 12px;
+    border-radius: 16px;
+    padding: 14px 12px;
     margin-bottom: 14px;
-    box-shadow: 0 1px 2px rgba(20, 40, 75, 0.08);
+    box-shadow: 0 8px 18px -12px rgba(0, 0, 0, 0.6);
   }
   label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
   input, textarea, select {
     width: 100%;
-    background: #fff;
+    background: var(--field);
     color: var(--text);
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -54,10 +76,10 @@
     font-size: 1rem; /* 16px: stops mobile browsers from zooming in on focus */
   }
   textarea { height: auto; min-height: 72px; padding: 10px 12px; resize: vertical; }
-  input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; }
+  input:focus-visible, textarea:focus-visible, select:focus-visible, button:focus-visible { outline: 3px solid var(--blue); outline-offset: 1px; }
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-  input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  input[type=number] { -moz-appearance: textfield; appearance: textfield; font-variant-numeric: tabular-nums; }
   button {
     font: inherit;
     border: 0;
@@ -67,7 +89,7 @@
     background: var(--line);
     touch-action: manipulation; /* fast repeated taps on + / − without double-tap zoom */
   }
-  button:active { filter: brightness(0.92); }
+  button:active { transform: scale(0.97); }
   button:disabled { opacity: 0.45; cursor: not-allowed; }
   .hidden { display: none; }
 
@@ -75,7 +97,7 @@
   .top-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; margin-bottom: 10px; }
   .link-btn {
     background: transparent;
-    color: var(--navy);
+    color: var(--blue);
     padding: 0;
     height: 40px;
     text-align: left;
@@ -85,101 +107,117 @@
   .hint { margin: 6px 0 0; font-size: 0.85rem; color: var(--muted); }
 
   /* exercise */
+  .exercise { border-left: 6px solid var(--gc, var(--line)); }
+  .groups { display: grid; grid-template-columns: auto repeat(5, 1fr); gap: 6px; align-items: center; margin-bottom: 10px; }
+  .groups-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding-right: 2px; }
+  .group-chip { height: 40px; padding: 0; font-weight: 800; background: transparent; border: 1.5px solid var(--c); color: var(--c); }
+  .group-chip.on { background: var(--c); color: #1d2228; }
   .exercise-head { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-bottom: 8px; }
-  .exercise-head .name { font-weight: 600; }
+  .exercise-head .name { font-weight: 700; font-size: 1.05rem; }
   .remove-exercise { background: transparent; color: var(--muted); font-size: 1.1rem; }
-  .remove-exercise:active { color: var(--err); }
+  .remove-exercise:active { color: var(--red); }
   .prev { margin: 0 0 10px; font-size: 0.9rem; color: var(--muted); }
   .prev:empty { display: none; }
-  .prev .up { color: var(--ok); font-weight: 600; }
-  .prev .down { color: var(--err); font-weight: 600; }
-  .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
-  .segmented button {
-    height: 40px;
-    background: #fff;
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .segmented button.on { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 700; }
+  .prev .up { color: var(--green); font-weight: 700; }
+  .prev .down { color: var(--red); font-weight: 700; }
+  .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; padding: 4px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; }
+  .segmented button { height: 38px; background: transparent; color: var(--muted); }
+  .segmented button.on { background: #eef1f4; color: #1d2228; font-weight: 700; }
 
-  /* one set = one block */
-  .sets { display: grid; gap: 8px; }
-  .set { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px 8px; }
-  /* both rows share the same three columns: label | − input + | ✕ or BW */
-  .set-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) 46px; gap: 6px; align-items: center; }
-  .set-row + .set-row { margin-top: 6px; }
-  .row-label { font-size: 0.7rem; line-height: 1.2; color: var(--muted); }
-  .row-label b { display: block; font-size: 0.85rem; color: var(--text); }
-  .remove-set { width: 46px; height: 52px; padding: 0; background: transparent; color: var(--muted); font-size: 1.2rem; }
-  .remove-set:active { color: var(--err); }
+  /* one set = one tile; its plate badge follows the colours of real weight plates */
+  .sets { display: grid; gap: 10px; }
+  .set { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px 10px 8px; }
+  .set-head { display: grid; grid-template-columns: minmax(0, 1fr) 46px; align-items: center; margin-bottom: 2px; }
+  .set-head .num { font-size: 1rem; color: var(--text); }
+  .plate {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    margin-right: 8px;
+    vertical-align: -4px;
+    border-radius: 50%;
+    --pc: #8fa0b5;
+    background: radial-gradient(circle, var(--raised) 0 2.5px, var(--pc) 3px);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
+  }
+  .field + .field { margin-top: 8px; }
+  .field-title { font-size: 0.85rem; font-weight: 600; color: var(--muted); margin: 0 0 4px 2px; }
+  .field-row { display: grid; grid-template-columns: minmax(0, 1fr) 46px; gap: 6px; align-items: center; }
+  .remove-set { width: 46px; height: 36px; padding: 0; background: transparent; color: var(--muted); font-size: 1.2rem; }
+  .remove-set:active { color: var(--red); }
   .remove-set:disabled { visibility: hidden; }
   .bw {
     width: 46px;
     height: 52px;
     padding: 0;
     font-size: 0.9rem;
-    font-weight: 700;
-    background: #fff;
+    font-weight: 800;
+    background: var(--field);
     border: 1px solid var(--line);
     color: var(--muted);
   }
-  .bw.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .bw.on { background: var(--yellow); border-color: var(--yellow); color: #1d2228; }
   .num-field { display: flex; gap: 3px; }
   .num-field input {
     min-width: 0;
     height: 52px;
     padding: 0 2px;
     text-align: center;
-    font-size: 1.2rem;
-    font-weight: 600;
+    font-size: 1.25rem;
+    font-weight: 700;
   }
-  .num-field input.changed { border-color: var(--green); background: var(--green-soft); box-shadow: 0 0 0 1px var(--green); }
-  .num-field input:disabled { background: #e3e8f1; color: var(--muted); }
+  .num-field input.changed { border-color: var(--yellow); background: var(--yellow-soft); box-shadow: 0 0 0 1px var(--yellow); }
+  .num-field input:disabled { background: #22282f; color: var(--muted); }
   .num-field .step {
     flex: 0 0 40px;
     height: 52px;
     padding: 0;
     font-size: 1.5rem;
     line-height: 1;
-    background: var(--navy-soft);
-    border: 1px solid var(--line);
-    color: var(--navy);
+    background: var(--blue-soft);
+    border: 1px solid #3d5683;
+    color: #fff;
   }
   .num-field.disabled .step { opacity: 0.35; pointer-events: none; }
 
-  .set-actions { display: block; margin-top: 8px; }
+  .set-actions { display: block; margin-top: 10px; }
   .set-actions button {
     width: 100%;
     height: 48px;
-    background: #fff;
-    border: 1px dashed #8fa3c4;
-    color: var(--navy);
-    font-weight: 600;
+    background: var(--field);
+    border: 1.5px dashed #56698a;
+    color: var(--blue);
+    font-weight: 700;
   }
   .note-field { margin-top: 4px; }
-  .add-exercise { width: 100%; height: 52px; margin-bottom: 14px; background: #fff; border: 1px solid var(--line); font-weight: 600; }
+  .add-exercise { width: 100%; height: 54px; margin-bottom: 14px; background: var(--card); border: 1.5px dashed #56698a; color: var(--blue); font-weight: 700; }
 
   .bar {
     position: fixed;
     left: 0; right: 0; bottom: 0;
     background: var(--card);
     border-top: 1px solid var(--line);
-    box-shadow: 0 -2px 8px rgba(20, 40, 75, 0.10);
+    box-shadow: 0 -6px 16px -10px rgba(0, 0, 0, 0.7);
     padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   }
   .bar-inner { max-width: 720px; margin: 0 auto; }
-  .primary { width: 100%; height: 52px; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 1.05rem; }
+  .primary { width: 100%; height: 54px; background: var(--blue-btn); color: #ffe9a3; font-weight: 800; font-size: 1.05rem; box-shadow: 0 3px 0 var(--blue-btn-edge); }
+  .primary:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--blue-btn-edge); }
 
   .notice { padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: 0.9rem; display: none; }
   .notice.show { display: block; }
-  .notice.warn { background: var(--navy-soft); color: var(--navy); }
+  .notice.warn { background: var(--yellow-soft); color: #ffe38a; }
   .notice.ok { background: var(--green-soft); color: var(--green); }
-  .notice.err { background: #fef2f2; color: #991b1b; }
+  .notice.err { background: var(--red-soft); color: #ffb4ae; }
+
+  @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
 </style>
 </head>
 <body>
 <main>
-  <h1>Treningi</h1>
+  <header class="masthead">
+    <h1>Treningi</h1>
+  </header>
 
   <div id="configWarning" class="notice warn">
     Brak adresu skryptu Google. Wklej adres aplikacji internetowej Apps Script do stałej
@@ -227,6 +265,13 @@
 <script>
   // Address of the Google Apps Script web app (see apps-script/Code.gs).
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
+
+  // Must match VERSION in apps-script/Code.gs.
+  const EXPECTED_SCRIPT_VERSION = 4;
+
+  // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
+  const GROUPS = ['A', 'B', 'C', 'D', 'E'];
+  const GROUP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f1df8e' };
 
   const NEW_VALUE = '__new__';
   const LAST_SELECTED_KEY = 'trainings.lastSelected';
@@ -283,8 +328,8 @@
       throw new Error('brak poprawnej odpowiedzi ze skryptu Google. Sprawdź, czy wdrożenie ma dostęp „Każdy” i czy zatwierdzono uprawnienia skryptu.');
     }
     if (!result.ok) throw new Error(result.error || 'nieznany błąd skryptu.');
-    if (!Array.isArray(result.trainings)) {
-      throw new Error('skrypt Google jest w starej wersji (brak listy treningów). Wklej najnowszy Code.gs i wdróż go jako nową wersję.');
+    if (result.version !== EXPECTED_SCRIPT_VERSION || !Array.isArray(result.trainings)) {
+      throw new Error('wdrożony skrypt Google jest w starej wersji, dlatego serie nie mogą się wczytać. Wklej najnowszy Code.gs i wdróż go jako nową wersję (Wdróż → Zarządzaj wdrożeniami → Edytuj → Nowa wersja).');
     }
     trainings = result.trainings;
   }
@@ -340,7 +385,7 @@
   }
 
   function mainLabel(timed) {
-    return timed ? 'sek.' : 'powt.';
+    return timed ? 'Czas (s)' : 'Powtórzenia';
   }
 
   function applyMode(card) {
@@ -354,10 +399,20 @@
     });
   }
 
+  function applyGroup(card, group) {
+    const known = GROUPS.includes(group) ? group : '';
+    card.dataset.group = known;
+    card.style.setProperty('--gc', known ? GROUP_COLORS[known] : 'var(--line)');
+    card.querySelectorAll('.group-chip').forEach((chip) => {
+      chip.classList.toggle('on', chip.dataset.group === known);
+      chip.setAttribute('aria-pressed', chip.dataset.group === known ? 'true' : 'false');
+    });
+  }
+
   function renumber(card) {
     const rows = card.querySelectorAll('.set');
     rows.forEach((row, i) => {
-      row.querySelector('.num').textContent = 'Seria ' + (i + 1);
+      row.querySelector('.num').innerHTML = '<span class="plate"></span>Seria ' + (i + 1);
     });
     rows.forEach((row) => { row.querySelector('.remove-set').disabled = rows.length <= 1; });
   }
@@ -379,15 +434,20 @@
     const row = document.createElement('div');
     row.className = 'set';
     row.innerHTML =
-      '<div class="set-row first">' +
-        '<div class="row-label"><b class="num"></b><span class="main-label"></span></div>' +
-        numberField('main', timed ? STEP.time : STEP.reps, 1) +
+      '<div class="set-head">' +
+        '<b class="num"></b>' +
         '<button type="button" class="remove-set" title="Usuń serię" aria-label="Usuń serię">✕</button>' +
       '</div>' +
-      '<div class="set-row">' +
-        '<div class="row-label"><b>Ciężar</b>kg</div>' +
-        '<div class="weight-field">' + numberField('weight', STEP.weight, 0) + '</div>' +
-        '<button type="button" class="bw" aria-pressed="false">BW</button>' +
+      '<div class="field">' +
+        '<div class="field-title main-label"></div>' +
+        '<div class="field-row">' + numberField('main', timed ? STEP.time : STEP.reps, 1) + '<span></span></div>' +
+      '</div>' +
+      '<div class="field">' +
+        '<div class="field-title">Ciężar (kg)</div>' +
+        '<div class="field-row">' +
+          '<div class="weight-field">' + numberField('weight', STEP.weight, 0) + '</div>' +
+          '<button type="button" class="bw" aria-pressed="false">BW</button>' +
+        '</div>' +
       '</div>';
     const main = row.querySelector('.main');
     main.placeholder = timed ? 'sek.' : 'powt.';
@@ -412,6 +472,9 @@
         '<input type="text" class="name" list="exerciseNames" placeholder="Nazwa ćwiczenia">' +
         '<button type="button" class="remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
       '</div>' +
+      '<div class="groups" role="group" aria-label="Blok ćwiczenia"><span class="groups-label">Blok</span>' +
+        GROUPS.map((g) => '<button type="button" class="group-chip" data-group="' + g + '" style="--c:' + GROUP_COLORS[g] + '">' + g + '</button>').join('') +
+      '</div>' +
       '<p class="prev"></p>' +
       '<div class="segmented">' +
         '<button type="button" data-mode="reps">Powtórzenia</button>' +
@@ -426,6 +489,7 @@
 
     card.querySelector('.name').value = (data && data.name) || '';
     applyMode(card);
+    applyGroup(card, data && data.group);
 
     card.querySelector('.remove-exercise').addEventListener('click', () => {
       card.remove();
@@ -475,6 +539,7 @@
     return {
       name: card.querySelector('.name').value.trim(),
       mode: modeOf(card),
+      group: card.dataset.group || '',
       note: card.querySelector('.note-input').value.trim(),
       sets
     };
@@ -551,7 +616,7 @@
         result.textContent = ' · bez zmian';
       } else {
         result.className = parts[0].diff > 0 ? 'up' : 'down';
-        result.textContent = ' → ' + parts.map((p) => (p.diff > 0 ? '+' : '') + formatNumber(p.diff) + ' ' + p.unit).join(', ');
+        result.textContent = ' ' + (parts[0].diff > 0 ? '▲ ' : '▼ ') + parts.map((p) => (p.diff > 0 ? '+' : '') + formatNumber(p.diff) + ' ' + p.unit).join(', ');
       }
       hint.appendChild(result);
     }
@@ -596,7 +661,7 @@
           seconds: c.mode === 'time' ? s.value : null,
           weight: s.weight === 'BW' ? 'BW' : (Number.isNaN(s.weight) ? null : s.weight)
         }));
-      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, note: c.note, sets });
+      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, group: c.group, note: c.note, sets });
     });
     return valid;
   }
@@ -667,6 +732,13 @@
 
   exercisesEl.addEventListener('click', (event) => {
     const target = event.target;
+
+    const chip = target.closest('.group-chip');
+    if (chip) {
+      const card = chip.closest('.exercise');
+      applyGroup(card, card.dataset.group === chip.dataset.group ? '' : chip.dataset.group);
+      return;
+    }
 
     const modeButton = target.closest('.segmented button');
     if (modeButton) {
