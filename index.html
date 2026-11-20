@@ -314,7 +314,7 @@
   .group-chip.on { box-shadow:0 0 16px color-mix(in srgb, var(--c) 70%, transparent); }
   .mood-scale button { border-radius:18px; background:rgba(6,9,22,.45); }
   .mood-scale button.on { box-shadow:0 0 18px color-mix(in srgb, var(--mc) 65%, transparent); }
-  .swap { border-radius:50%; }
+  .swap, .remove-exercise { width:44px; height:44px; align-self:center; border-radius:50%; }
   .set-actions button, .add-exercise, .pick-media { border-radius:999px; border:1.5px dashed rgba(169,188,255,.5); background:rgba(255,255,255,.04); }
   .primary { background:linear-gradient(135deg,#7c5cff,#33c6ff); border-radius:999px; box-shadow:0 12px 28px -8px rgba(90,110,255,.85); font-size:1.1rem; }
   .primary:active { box-shadow:0 4px 12px -6px rgba(90,110,255,.8); transform:scale(.98); }
@@ -322,7 +322,7 @@
   .notice { border-radius:18px; }
   .notice.warn { color:#dfe6ff; }
   .mood-scale button.on { background:var(--mc); color:#12162a; }
-  .check { display:flex; align-items:center; gap:14px; margin:0; font-size:1.05rem; font-weight:600; color:var(--text); cursor:pointer; }
+  .check { display:flex; align-items:center; gap:14px; margin:0; cursor:pointer; }
   .check input { position:absolute; opacity:0; width:1px; height:1px; padding:0; border:0; }
   .check .box { flex:0 0 30px; width:30px; height:30px; border-radius:50%; display:grid; place-items:center; background:rgba(6,9,22,.5); border:1.5px solid rgba(169,188,255,.5); color:transparent; transition:background .2s, box-shadow .2s, color .2s, transform .15s; }
   .check .box svg { width:18px; height:18px; }
@@ -330,6 +330,35 @@
   .check input:focus-visible + .box { outline:3px solid var(--blue); outline-offset:2px; }
   .check:active .box { transform:scale(.92); }
   #mailBox, #pinBox { margin-top:14px; }
+  /* training picker: round chevron button set in from the edge */
+  .select-wrap { position:relative; }
+  .select-wrap select { -webkit-appearance:none; appearance:none; padding-right:56px; }
+  .select-wrap::after { content:''; position:absolute; right:12px; top:50%; margin-top:-17px; width:34px; height:34px; border-radius:50%; pointer-events:none; box-sizing:border-box;
+    background:rgba(108,125,255,.28) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d5dcff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center/18px no-repeat;
+    border:1px solid rgba(160,175,255,.35); }
+  /* reps: the big + sits above the gap between the weight + and BW */
+  .main-row { position:relative; }
+  .main-row .num-field { padding-right:47px; }
+  .main-row .step[data-dir="1"] { position:absolute; right:21px; top:50%; margin-top:-28px; flex:none; width:56px; height:56px; font-size:1.9rem; }
+  /* exercise remark a bit lower */
+  .note-toggle { margin-top:14px; }
+  .note-field { margin-top:14px; }
+  /* one look for every tile title */
+  .card-title, label.card-title { display:block; margin:0 0 8px 2px; font-size:1.05rem; font-weight:700; line-height:1.3; color:var(--text); }
+  .check .card-title { margin:0; }
+  /* notes and photos tiles are the same size */
+  .pair { display:flex; flex-direction:column; min-height:142px; }
+  .pair textarea { flex:1; }
+  .media-list:empty { display:none; }
+  /* mood rows: lighter left-aligned sub-titles, the picked word stays on the right */
+  .mood-head { position:relative; justify-content:flex-start; margin:0 2px 6px; }
+  .mood-label { font-size:1rem; font-weight:400; color:var(--blue); letter-spacing:.02em; }
+  .mood-word { position:absolute; right:0; top:50%; transform:translateY(-50%); }
+  .pair .pick-media { flex:1; height:auto; min-height:72px; }
+  .prev { font-size:1rem; }
+  .mood .hint { font-size:0.95rem; margin-top:7px; }
+  .mood label[for=moodNote] { font-size:0.9rem; margin-top:15px !important; margin-bottom:5px; }
+  #moodNote { font-size:1.07rem; line-height:1.5; }
 </style>
 </head>
 <body>
@@ -349,7 +378,7 @@
       <div class="top-row">
         <div>
           <label for="training">Trening</label>
-          <select id="training"></select>
+          <div class="select-wrap"><select id="training"></select></div>
         </div>
         <div>
           <label for="date">Data</label>
@@ -364,7 +393,7 @@
     </div>
 
     <div class="card mood">
-      <div class="field-title">Samopoczucie</div>
+      <div class="card-title">Samopoczucie</div>
       <div id="moodList"></div>
       <p class="hint" id="moodPrev"></p>
       <label for="moodNote" style="margin-top:14px">Uwagi do samopoczucia</label>
@@ -377,23 +406,23 @@
 
     <button type="button" id="addExercise" class="add-exercise">+ Dodaj ćwiczenie</button>
 
-    <div class="card extras">
-      <div class="field-title">Zdjęcia i filmy</div>
+    <div class="card pair">
+      <label for="notes" class="card-title">Notatka do całego treningu</label>
+      <textarea id="notes" placeholder="Ogólne wrażenia, plan na następny raz…"></textarea>
+    </div>
+
+    <div class="card extras pair">
+      <div class="card-title">Zdjęcia i filmy</div>
       <button type="button" class="pick-media" id="pickMedia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13.5" r="3.5"/></svg><span>Dodaj zdjęcia lub filmy</span></button>
       <input type="file" id="media" accept="image/*,video/*" multiple hidden>
       <ul class="media-list" id="mediaList"></ul>
-    </div>
-
-    <div class="card">
-      <label for="notes">Notatka do całego treningu</label>
-      <textarea id="notes" placeholder="Ogólne wrażenia, plan na następny raz…"></textarea>
     </div>
 
     <div class="card mailcard">
       <label class="check" for="sendMail">
         <input type="checkbox" id="sendMail">
         <span class="box" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
-        <span>Wysłać podsumowanie mailem?</span>
+        <span class="card-title">Wysłać podsumowanie mailem?</span>
       </label>
       <div id="mailBox" class="hidden">
         <label for="emails">Adresy e-mail</label>
@@ -649,7 +678,7 @@
       '<p class="set-note"></p>' +
       '<div class="field">' +
         '<div class="field-title main-label"></div>' +
-        '<div class="field-row">' + numberField('main', timed ? STEP.time : STEP.reps, 1) + '<span></span></div>' +
+        '<div class="field-row main-row">' + numberField('main', timed ? STEP.time : STEP.reps, 1) + '<span></span></div>' +
       '</div>' +
       '<div class="field">' +
         '<div class="field-title">Ciężar (kg)</div>' +
