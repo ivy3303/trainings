@@ -280,7 +280,7 @@ function latestExercises_(sheet, layout) {
         var timed = String(formats[index][c]).indexOf(' s"') >= 0;
         if (timed) exercise.mode = 'time';
         if (!exercise.note && notes[index][c]) exercise.note = String(notes[index][c]);
-        var amount = Number(main) || 0;
+        var amount = main === '' || main === null ? null : (Number(main) || 0);
         exercise.sets.push({
           reps: timed ? 0 : amount,
           seconds: timed ? amount : 0,
@@ -350,7 +350,7 @@ function validate_(data) {
     exercise.sets.forEach(function (set) {
       var value = Number(timed ? set.seconds : set.reps);
       var hasWeight = set.weight !== null && set.weight !== undefined && set.weight !== '';
-      if (!(value > 0)) throw new Error('Brak ' + (timed ? 'czasu' : 'powtórzeń') + ' w ćwiczeniu ' + label + '.');
+      if (!(value >= 0)) throw new Error('Brak ' + (timed ? 'czasu' : 'powtórzeń') + ' w ćwiczeniu ' + label + '.');
       if (hasWeight && !isBodyweight_(set.weight) && !(Number(set.weight) >= 0)) {
         throw new Error('Nieprawidłowy ciężar w ćwiczeniu ' + label + '.');
       }

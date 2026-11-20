@@ -3,6 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f1f">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Treningi">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <title>Treningi</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,6 +191,7 @@
   }
   .num-field input:disabled { background: #22282f; color: var(--muted); }
   .num-field input.main.more { background: var(--green-soft); border-color: var(--green); color: var(--green); }
+  .num-field input.weight.more { background: var(--green-soft); border-color: var(--green); color: var(--green); }
   .num-field input.main.less { background: var(--red-soft); border-color: var(--red); color: #ffb4ae; }
   .num-field .step {
     flex: 0 0 40px;
@@ -347,6 +356,13 @@
   .done-summary { zoom:0.86; margin-top:18px; text-align:left; }
   .done-summary a { text-decoration:none; }
   .prev .up, .prev .down, .prev .flat { white-space:nowrap; }
+  .exercise { scroll-margin-top:14px; }
+  .done-btn { display:flex; align-items:center; justify-content:center; margin:14px auto 0; width:40px; height:40px; padding:0; border-radius:50%; background:rgba(79,208,154,.10); border:1px solid rgba(79,208,154,.45); color:var(--green); }
+  .done-btn svg { width:20px; height:20px; }
+  .num-field .step { -webkit-user-select:none; user-select:none; -webkit-touch-callout:none; touch-action:manipulation; }
+  .main-row .step[data-dir="-1"] { position:relative; overflow:hidden; }
+  .main-row .step[data-dir="-1"]::after { content:''; position:absolute; inset:0; border-radius:50%; background:rgba(240,116,108,.55); transform:scale(0); opacity:0; pointer-events:none; }
+  .main-row .step[data-dir="-1"].holding::after { opacity:1; transform:scale(1); transition:transform 600ms linear; }
   .done-view .bar { position:fixed; }
   .done-check.pop-in { animation:donePop .55s cubic-bezier(.2,1.4,.4,1) both; }
   @keyframes donePop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
@@ -355,16 +371,19 @@
   .notice.err { font-weight:600; border:1px solid rgba(255,138,128,.55); }
   /* training picker: round chevron button set in from the edge */
   .select-wrap { position:relative; }
-  .select-wrap select { -webkit-appearance:none; appearance:none; padding-right:56px; }
+  .select-wrap select, .select-wrap input[type="date"] { -webkit-appearance:none; appearance:none; padding-right:56px; }
+  /* the native calendar icon stays, but invisible, over the whole right side so a tap still opens the picker */
+  .select-wrap input[type="date"] { position:relative; }
+  .select-wrap input[type="date"]::-webkit-calendar-picker-indicator { position:absolute; top:0; right:0; width:60px; height:100%; margin:0; padding:0; opacity:0; cursor:pointer; }
   .select-wrap::after { content:''; position:absolute; right:12px; top:50%; margin-top:-17px; width:34px; height:34px; border-radius:50%; pointer-events:none; box-sizing:border-box;
     background:rgba(108,125,255,.28) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23d5dcff' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center/18px no-repeat;
     border:1px solid rgba(160,175,255,.35); }
   /* reps: the big + sits above the gap between the weight + and BW */
   .main-row { position:relative; }
   .main-row .num-field { padding-right:47px; }
-  .main-row .step[data-dir="1"] { position:absolute; right:21px; top:50%; margin-top:-28px; flex:none; width:56px; height:56px; font-size:1.9rem; }
+  .main-row .step[data-dir="1"] { position:absolute; right:18px; top:50%; margin-top:-31px; flex:none; width:62px; height:62px; font-size:2.1rem; }
   /* exercise remark a bit lower */
-  .note-toggle { margin-top:14px; }
+  .note-toggle { margin-top:14px; padding-left:12px; }
   .note-field { margin-top:14px; }
   /* one look for every tile title */
   .card-title, label.card-title { display:block; margin:0 0 8px 2px; font-size:1.05rem; font-weight:700; line-height:1.3; color:var(--text); }
@@ -401,7 +420,7 @@
   </header>
 
   <div id="configWarning" class="notice warn">
-    Brak adresu skryptu Google. Wklej adres aplikacji internetowej Apps Script do stałej
+    Formularz nie jest jeszcze połączony z arkuszem. Uzupełnij stałą
     <code>SCRIPT_URL</code> w pliku index.html, żeby zapisywanie i wczytywanie działało.
   </div>
   <div id="status" class="notice" role="status"></div>
@@ -415,12 +434,12 @@
         </div>
         <div>
           <label for="date">Data</label>
-          <input id="date" type="date" required>
+          <div class="select-wrap"><input id="date" type="date" required></div>
         </div>
       </div>
       <div id="newNameBox" class="hidden" style="margin-bottom:10px">
         <label for="newName">Nazwa nowego treningu (nazwa zakładki w arkuszu)</label>
-        <input id="newName" type="text" placeholder="np. FBW A, Push, Nogi">
+        <input id="newName" type="text" placeholder="np. FBW">
       </div>
       <p class="hint" id="lastInfo"></p>
     </div>
@@ -464,8 +483,8 @@
       </div>
       <div id="pinBox" class="hidden">
         <label for="pin">Kod dostępu do wysyłki</label>
-        <input id="pin" type="password" autocomplete="off" placeholder="PIN ze skryptu Google">
-        <p class="hint">Ten sam, który jest w skrypcie jako właściwość PIN. Zapamiętuję go na tym urządzeniu.</p>
+        <input id="pin" type="password" autocomplete="off" placeholder="PIN">
+        <p class="hint">Zapamiętuję go na tym urządzeniu.</p>
       </div>
     </div>
 
@@ -567,6 +586,11 @@
 
   const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
+  // Lets the page be installed on the home screen and open full screen like an app.
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+
   function animate(el, keyframes, options) {
     if (!el || reduceMotion.matches || !el.animate) return null;
     return el.animate(keyframes, Object.assign({ easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)', fill: 'backwards' }, options));
@@ -641,11 +665,11 @@
       const response = await fetch(SCRIPT_URL + '?action=list');
       result = await response.json();
     } catch (error) {
-      throw new Error('brak poprawnej odpowiedzi ze skryptu Google. Sprawdź, czy wdrożenie ma dostęp „Każdy” i czy zatwierdzono uprawnienia skryptu.');
+      throw new Error('brak poprawnej odpowiedzi serwera. Sprawdź, czy wdrożenie ma dostęp „Każdy” i czy zatwierdzono uprawnienia.');
     }
-    if (!result.ok) throw new Error(result.error || 'nieznany błąd skryptu.');
+    if (!result.ok) throw new Error(result.error || 'nieznany błąd serwera.');
     if (result.version !== EXPECTED_SCRIPT_VERSION || !Array.isArray(result.trainings)) {
-      throw new Error('wdrożony skrypt Google jest w starej wersji, dlatego serie nie mogą się wczytać. Wklej najnowszy Code.gs i wdróż go jako nową wersję (Wdróż → Zarządzaj wdrożeniami → Edytuj → Nowa wersja).');
+      throw new Error('zapis na serwerze jest w starej wersji, dlatego serie nie mogą się wczytać. Wklej najnowszy kod i wdróż go jako nową wersję (Wdróż → Zarządzaj wdrożeniami → Edytuj → Nowa wersja).');
     }
     trainings = result.trainings;
   }
@@ -689,7 +713,7 @@
 
   function numberField(cls, step, min, extra) {
     return '<div class="num-field">' +
-      '<button type="button" class="step" data-dir="-1" tabindex="-1" aria-label="Mniej">−</button>' +
+      '<button type="button" class="step" data-dir="-1" tabindex="-1" aria-label="Mniej (przytrzymaj, aby wyzerować)">−</button>' +
       '<input type="number" class="' + cls + '" inputmode="decimal" min="' + min + '" step="any" data-step="' + step + '" data-min="' + min + '">' +
       '<button type="button" class="step" data-dir="1" tabindex="-1" aria-label="Więcej">+</button>' +
       (extra || '') +
@@ -757,7 +781,7 @@
       '<p class="set-note"></p>' +
       '<div class="field">' +
         '<div class="field-title main-label"></div>' +
-        '<div class="field-row main-row">' + numberField('main', timed ? STEP.time : STEP.reps, 1) + '<span></span></div>' +
+        '<div class="field-row main-row">' + numberField('main', timed ? STEP.time : STEP.reps, 0) + '<span></span></div>' +
       '</div>' +
       '<div class="field">' +
         '<div class="field-title">Ciężar (kg)</div>' +
@@ -772,7 +796,7 @@
     row.querySelector('.main-label').textContent = mainLabel(timed);
     if (data) {
       const value = timed ? data.seconds : data.reps;
-      main.value = value ? value : '';
+      main.value = value === null || value === undefined ? '' : value;
       // No kilograms recorded means bodyweight.
       const noWeight = data.weight === null || data.weight === undefined || data.weight === '';
       if (data.weight === 'BW' || noWeight) setBodyweight(row, true);
@@ -785,6 +809,7 @@
 
   // ---------- variants: alternatives of one section (C2a, C2b …) ----------
 
+  const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
   const SWAP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h16M20 8l-3.5-3.5M20 8l-3.5 3.5M20 16H4M4 16l3.5-3.5M4 16l3.5 3.5"/></svg>';
 
   function slotOf(code) {
@@ -937,7 +962,8 @@
         '<button type="button" class="add-set">+ Seria</button>' +
       '</div>' +
       '<button type="button" class="link-btn note-toggle">+ Uwaga do ćwiczenia</button>' +
-      '<div class="note-field hidden"><input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>';
+      '<div class="note-field hidden"><input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>' +
+      '<button type="button" class="done-btn" aria-label="Gotowe — następne ćwiczenie">' + CHECK_ICON + '</button>';
 
     // With alternatives the ✕ drops only the exercise on screen; the last one takes the whole tile.
     card.querySelector('.remove-exercise').addEventListener('click', () => {
@@ -966,8 +992,8 @@
         const main = last.querySelector('.main').value;
         const weight = last.dataset.bw ? 'BW' : last.querySelector('.weight').value;
         row = createSet(card, {
-          reps: timed ? 0 : Number(main),
-          seconds: timed ? Number(main) : 0,
+          reps: timed ? 0 : (main === '' ? null : Number(main)),
+          seconds: timed ? (main === '' ? null : Number(main)) : 0,
           weight: weight === 'BW' ? 'BW' : (weight === '' ? null : Number(weight))
         });
       } else {
@@ -1015,7 +1041,7 @@
   // Previous sets in the same shape as readCard: { value, weight } (weight NaN = none).
   function previousSets(previous) {
     return previous.sets.map((s) => ({
-      value: previous.mode === 'time' ? s.seconds : s.reps,
+      value: (previous.mode === 'time' ? s.seconds : s.reps) || 0,
       weight: s.weight === null || s.weight === undefined ? NaN : s.weight
     }));
   }
@@ -1057,7 +1083,8 @@
   // that set's tile; the rest (nothing, or "ustawienie maszyny (3/2)") stays a general remark.
   function parseSetNotes(note) {
     const result = { general: [], sets: {} };
-    const text = (note || '').trim();
+    // the automatic "Wariant A1b" label is not a remark of its own
+    const text = (note || '').replace(/^\s*Wariant\s+[A-Z]\d+[a-z]\s*(?:\.\s*|\n|$)/, '').trim();
     if (!text) return result;
     const matches = [...text.matchAll(/(?:^|[\s,;])seria\s*(\d+)\s*:?\s*/gi)];
     if (!matches.length) { result.general.push(text); return result; }
@@ -1093,16 +1120,37 @@
       const wasLess = input.classList.contains('less');
       // More kilograms for fewer reps is progress, not a step back, so the reps tile stays neutral then.
       const kgBefore = comparable && previous.sets[i] ? previous.sets[i].weight : null;
-      const kgNow = row.querySelector('.weight').value;
-      const heavier = typeof kgBefore === 'number' && kgNow !== '' && Number(kgNow) > kgBefore;
-      input.classList.toggle('more', Boolean(before) && now > before);
-      input.classList.toggle('less', Boolean(before) && now < before && !heavier);
+      const kgInput = row.querySelector('.weight');
+      const heavier = typeof kgBefore === 'number' && kgInput.value !== '' && Number(kgInput.value) > kgBefore;
+      const wasHeavier = kgInput.classList.contains('more');
+      kgInput.classList.toggle('more', heavier);
+      if (!wasHeavier && heavier) glow(kgInput, '79, 208, 154');
+      const known = before !== null && before !== undefined && !Number.isNaN(now);
+      input.classList.toggle('more', known && now > before);
+      input.classList.toggle('less', known && now < before && !heavier);
       if (!wasMore && input.classList.contains('more')) glow(input, '79, 208, 154');
       if (!wasLess && input.classList.contains('less')) glow(input, '240, 116, 108');
     });
   }
 
+  // The remark of an alternative (A1a / A1b) starts with the variant that is shown, and follows swaps and code changes.
+  const VARIANT_LABEL = /^\s*Wariant\s+[A-Z]\d+[a-z]\s*(?:\.\s*|\n|$)/;
+  function syncVariantNote(card) {
+    const input = card.querySelector('.note-input');
+    if (document.activeElement === input) return; // never rewrite the text while it is being typed
+    const code = cardCode(card);
+    const label = /^[A-Z]\d+[a-z]$/.test(code) ? 'Wariant ' + code : '';
+    const rest = input.value.replace(VARIANT_LABEL, '').trim();
+    const value = label ? label + '. ' + rest : rest;
+    if (input.value !== value) input.value = value;
+    if (label) {
+      card.querySelector('.note-field').classList.remove('hidden');
+      card.querySelector('.note-toggle').classList.add('hidden');
+    }
+  }
+
   function updateCard(card) {
+    syncVariantNote(card);
     const current = readCard(card);
     const previous = findPrevious(current.name);
     markChanges(card, previous);
@@ -1155,7 +1203,7 @@
       createExercise();
       $('lastInfo').textContent = trainings.length || !isConfigured()
         ? 'Nowy trening: pierwszy zapis stworzy nową zakładkę.'
-        : 'Nie znaleziono żadnych treningów w arkuszu. Jeśli powinny tu być, sprawdź wdrożenie skryptu Google.';
+        : 'Nie znaleziono żadnych treningów w arkuszu. Jeśli powinny tu być, sprawdź wdrożenie.';
     }
     renderingAll = false;
     refresh();
@@ -1245,7 +1293,7 @@
   async function postJson(body) {
     const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
     const result = await response.json();
-    if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+    if (!result.ok) throw new Error(result.error || 'Nieznany błąd serwera.');
     return result;
   }
 
@@ -1309,7 +1357,7 @@
         if (result.done) item.id = result.id;
         renderMedia();
       }
-      if (!item.id) throw new Error('Dysk Google nie potwierdził zapisu pliku.');
+      if (!item.id) throw new Error('Dysk nie potwierdził zapisu pliku.');
       item.status = 'done';
     } catch (error) {
       item.status = 'error';
@@ -1402,7 +1450,7 @@
       const state = {
         queued: 'Czeka na wysłanie…',
         uploading: 'Wysyłam… ' + Math.round(item.progress * 100) + '%',
-        done: 'Wysłano na Dysk Google ✓',
+        done: 'Wysłano ✓',
         error: item.error || 'Nie udało się wysłać.'
       }[item.status];
       li.querySelector('.media-name').textContent = item.file.name + ' · ' + formatSize(item.file.size);
@@ -1484,20 +1532,26 @@
     exercisesEl.querySelectorAll('.exercise').forEach((card) => {
       const c = readCard(card);
       const sets = c.sets
-        .filter((s) => s.value > 0)
+        .filter((s) => s.value >= 0)
         .map((s) => ({
           reps: c.mode === 'reps' ? s.value : null,
           seconds: c.mode === 'time' ? s.value : null,
           weight: s.weight === 'BW' || Number.isNaN(s.weight) ? 'BW' : s.weight // empty kilograms = bodyweight
         }));
-      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, code: c.code, note: c.note, sets });
+      // An alternative (A1a / A1b) always says in the remark which variant was done; the form fills this in
+      // itself, so this only catches a label the person deleted by hand.
+      const variant = /^[A-Z]\d+[a-z]$/.test(c.code) ? 'Wariant ' + c.code : '';
+      let note = c.note;
+      if (variant && !note.startsWith(variant)) note = note ? variant + '. ' + note : variant;
+      if (variant && note === variant + '.') note = variant;
+      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, code: c.code, note, sets });
     });
     return valid;
   }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!isConfigured()) { showStatus('err', 'Najpierw wklej adres skryptu Google do SCRIPT_URL w index.html.'); return; }
+    if (!isConfigured()) { showStatus('err', 'Formularz nie jest jeszcze połączony z arkuszem (stała SCRIPT_URL w index.html).'); return; }
 
     const creating = isNewTraining();
     const training = creating ? $('newName').value.trim() : trainingSelect.value;
@@ -1548,7 +1602,7 @@
         })
       });
       const result = await response.json();
-      if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+      if (!result.ok) throw new Error(result.error || 'Nieznany błąd serwera.');
       media = [];
       renderMedia();
       wellness = {};
@@ -1627,6 +1681,15 @@
       return;
     }
 
+    if (target.closest('.done-btn')) {
+      const card = target.closest('.exercise');
+      const next = card.nextElementSibling && card.nextElementSibling.classList.contains('exercise') ? card.nextElementSibling : $('addExercise');
+      pop(target.closest('.done-btn'));
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      next.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: next === $('addExercise') ? 'center' : 'start' });
+      return;
+    }
+
     const noteToggle = target.closest('.note-toggle');
     if (noteToggle) {
       const card = noteToggle.closest('.exercise');
@@ -1646,6 +1709,7 @@
     }
 
     const step = target.closest('.step');
+    if (step && step.dataset.skipClick) { delete step.dataset.skipClick; return; }
     if (step) {
       const input = step.parentElement.querySelector('input');
       if (input.disabled) return;
@@ -1655,6 +1719,45 @@
       bump(input);
       refresh();
     }
+  });
+
+  // Holding "−" next to the reps (or seconds) sets them to 0; a ring fills up while the finger stays down.
+  const HOLD_MS = 600;
+  let holdTimer = null;
+  function stopHold(step) {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+    if (step) step.classList.remove('holding');
+  }
+  exercisesEl.addEventListener('pointerdown', (event) => {
+    const step = event.target.closest('.step[data-dir="-1"]');
+    const input = step && step.parentElement.querySelector('input.main');
+    if (!input || input.disabled) return;
+    stopHold(step);
+    step.classList.add('holding');
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      step.classList.remove('holding');
+      step.dataset.skipClick = '1';
+      input.value = 0;
+      if (navigator.vibrate) navigator.vibrate(25);
+      bump(input);
+      refresh();
+    }, HOLD_MS);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach((type) => {
+    exercisesEl.addEventListener(type, (event) => {
+      const step = event.target.closest && event.target.closest('.step[data-dir="-1"]');
+      if (step) stopHold(step);
+    });
+  });
+  // a finger that slides off the button without a pointerleave (scrolling) must not zero anything
+  exercisesEl.addEventListener('scroll', () => stopHold(exercisesEl.querySelector('.step.holding')), true);
+  exercisesEl.addEventListener('contextmenu', (event) => { if (event.target.closest('.step')) event.preventDefault(); });
+
+  // leaving the remark: bring the variant label back if it was edited away
+  exercisesEl.addEventListener('focusout', (event) => {
+    if (event.target.classList && event.target.classList.contains('note-input')) syncVariantNote(event.target.closest('.exercise'));
   });
 
   $('addExercise').addEventListener('click', () => {
