@@ -582,7 +582,7 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 11;
+  const EXPECTED_SCRIPT_VERSION = 12;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
@@ -1010,6 +1010,45 @@
     return null;
   }
 
+  // Numbers already taken in a block: by the other tiles of the form and by the exercises in the sheet.
+  function usedNumbers(group, skipCard) {
+    const used = new Set();
+    const add = (code) => {
+      const m = /^([A-Z])(\d+)/.exec(code || '');
+      if (m && m[1] === group) used.add(Number(m[2]));
+    };
+    exercisesEl.querySelectorAll('.exercise').forEach((card) => {
+      if (card === skipCard) return;
+      add(cardCode(card));
+      card._variants.forEach((v) => add(v && v.code));
+    });
+    const training = isNewTraining() ? null : currentTraining();
+    if (training) {
+      const own = new Set(skipCard ? skipCard._variants.filter((v) => v && v.name).map((v) => v.name.toLowerCase()) : []);
+      training.exercises.forEach((e) => { if (!own.has(e.name.toLowerCase())) add(e.code); });
+    }
+    return used;
+  }
+  // The lowest number of the block that is still free: 1, 2, 3 … and a new block starts again from 1.
+  function nextNumber(group, skipCard) {
+    const used = usedNumbers(group, skipCard);
+    let n = 1;
+    while (used.has(n)) n += 1;
+    return n;
+  }
+  // Picking a block fills in the number by itself (it stays editable); a number typed by hand is kept unless it clashes.
+  function autoNumber(card) {
+    const group = card.dataset.group;
+    if (!group) return;
+    const input = card.querySelector('.code-input');
+    const match = /^(\d+)([a-z]?)$/.exec(input.value.trim().toLowerCase());
+    const taken = match && usedNumbers(group, card).has(Number(match[1]));
+    if (match && !taken) return;
+    if (card._variants.length > 1 && !taken && input.value.trim()) return;
+    input.value = String(nextNumber(group, card));
+    input.classList.remove('invalid');
+  }
+
   // The variant letter is filled in by itself and stays editable, but never equals another alternative's.
   function fixCodeInput(card) {
     const input = card.querySelector('.code-input');
@@ -1074,7 +1113,7 @@
   }
 
   function updateSwap(card) {
-    card.querySelector('.code-input').placeholder = slotDigits(card) ? 'a/b' : '1b';
+    card.querySelector('.code-input').placeholder = slotDigits(card) ? 'a/b' : 'nr';
     const count = card._variants.length;
     const badge = card.querySelector('.swap-count');
     badge.textContent = count > 1 ? (card._index + 1) + '/' + count : '';
@@ -1160,7 +1199,7 @@
       '</div>' +
       '<div class="groups" role="group" aria-label="Blok ćwiczenia"><span class="groups-label">Blok</span>' +
         GROUPS.map((g) => '<button type="button" class="group-chip" data-group="' + g + '" style="--c:' + GROUP_COLORS[g] + '">' + g + '</button>').join('') +
-        '<input type="text" class="code-input" inputmode="text" autocapitalize="none" maxlength="3" placeholder="a/b" aria-label="Numer sekcji i litera wariantu, np. 1a">' +
+        '<input type="text" class="code-input" inputmode="text" autocapitalize="none" maxlength="3" placeholder="nr" aria-label="Numer w bloku i litera wariantu, np. 1 albo 1a">' +
       '</div>' +
       '<p class="prev"></p>' +
       '<div class="segmented">' +
@@ -1781,6 +1820,10 @@
         return;
       }
     }
+    // a block without a number gets the next free one (cards are handled top to bottom)
+    exercisesEl.querySelectorAll('.exercise').forEach((card) => {
+      if (card.dataset.group && !card.querySelector('.code-input').value.trim() && readCard(card).name) autoNumber(card);
+    });
     const duplicate = findDuplicateCode();
     if (duplicate) { showStatus('err', duplicate.message, duplicate.field); return; }
     const exercises = collectValid();
@@ -1896,6 +1939,7 @@
     if (chip) {
       const card = chip.closest('.exercise');
       applyGroup(card, card.dataset.group === chip.dataset.group ? '' : chip.dataset.group);
+      autoNumber(card);
       pop(chip);
       return;
     }
