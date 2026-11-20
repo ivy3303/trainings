@@ -799,6 +799,27 @@
     trainings = result.trainings;
   }
 
+  // The same big circle as at start-up covers the page while a training is saved, so nothing can be tapped meanwhile.
+  let veilTimer = null;
+  let veilOn = false;
+  function showVeil(text) {
+    const veil = $('loading');
+    clearTimeout(veilTimer);
+    veilOn = true;
+    $('loadingText').textContent = text;
+    veil.classList.remove('hidden', 'leaving');
+    document.body.classList.add('locked');
+  }
+  function hideVeil() {
+    const veil = $('loading');
+    if (!veilOn) return;
+    veilOn = false;
+    veil.classList.add('leaving');
+    document.body.classList.remove('locked');
+    clearTimeout(veilTimer);
+    veilTimer = setTimeout(() => veil.classList.add('hidden'), 320);
+  }
+
   function renderTrainingSelect(selectedName) {
     trainingSelect.innerHTML = '';
     trainings.forEach((t) => {
@@ -1855,6 +1876,9 @@
     submitBtn.classList.add('busy');
     submitBtn.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Zapisuję…</span>';
     showStatus('warn', 'Zapisuję…');
+    const extras = emails.length || media.length;
+    showVeil(extras ? 'Zapisuję trening i wysyłam podsumowanie…' : 'Zapisuję trening w arkuszu…');
+    const slowSave = setTimeout(() => { $('loadingText').textContent = 'Jeszcze chwila — arkusz zapisuje dane, nie zamykaj strony…'; }, 5000);
     try {
       // A plain-text body keeps this a "simple" request, so Apps Script needs no CORS preflight.
       const response = await fetch(SCRIPT_URL, {
@@ -1879,6 +1903,7 @@
       $('moodNote').value = '';
       updateMood();
 
+      clearTimeout(slowSave);
       try { await loadTrainings(); } catch (error) { /* saved anyway; keep the previous list */ }
       renderTrainingSelect(result.sheet);
       try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
@@ -1893,10 +1918,13 @@
       if (result.emailError) message += ' Maila nie udało się wysłać: ' + result.emailError;
       showStatus(result.emailError ? 'err' : 'ok', message);
       saved = true;
+      hideVeil();
       showDone(result);
     } catch (error) {
       showStatus('err', 'Nie udało się zapisać: ' + error.message + ' Dane zostały na stronie, spróbuj ponownie.', fieldForServerError(error.message));
     } finally {
+      clearTimeout(slowSave);
+      hideVeil();
       submitBtn.disabled = false;
       submitBtn.classList.remove('busy');
       if (saved) {
