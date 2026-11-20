@@ -1041,11 +1041,15 @@
     const group = card.dataset.group;
     if (!group) return;
     const input = card.querySelector('.code-input');
-    const match = /^(\d+)([a-z]?)$/.exec(input.value.trim().toLowerCase());
-    const taken = match && usedNumbers(group, card).has(Number(match[1]));
-    if (match && !taken) return;
-    if (card._variants.length > 1 && !taken && input.value.trim()) return;
+    // a number the form filled in itself follows the block; one typed by hand stays unless it clashes
+    if (!card._autoNum) {
+      const match = /^(\d+)([a-z]?)$/.exec(input.value.trim().toLowerCase());
+      const taken = match && usedNumbers(group, card).has(Number(match[1]));
+      if (match && !taken) return;
+      if (card._variants.length > 1 && !taken && input.value.trim()) return;
+    }
     input.value = String(nextNumber(group, card));
+    card._autoNum = true;
     input.classList.remove('invalid');
   }
 
@@ -1164,6 +1168,7 @@
     card.querySelector('.name').value = (data && data.name) || '';
     const { group, rest } = splitCode(data && data.code);
     card.querySelector('.code-input').value = rest;
+    card._autoNum = false;
     card.querySelector('.code-input').classList.remove('invalid');
     applyGroup(card, group);
     applyMode(card);
@@ -1916,6 +1921,7 @@
   form.addEventListener('input', (event) => {
     if (event.target.classList.contains('code-input')) {
       event.target.value = event.target.value.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+      event.target.closest('.exercise')._autoNum = false;
       event.target.classList.toggle('invalid', codeConflict(event.target.closest('.exercise')));
     }
     refresh();
