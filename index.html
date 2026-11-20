@@ -106,11 +106,22 @@
 
   /* exercise */
   .exercise { border-left: 6px solid var(--gc, var(--line)); }
-  .groups { display: grid; grid-template-columns: auto repeat(5, 1fr); gap: 6px; align-items: center; margin-bottom: 10px; }
+  .groups { display: grid; grid-template-columns: auto repeat(5, minmax(0, 1fr)) 58px; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .code-input { height: 40px; padding: 0 4px; text-align: center; font-weight: 700; }
   .groups-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding-right: 2px; }
   .group-chip { height: 40px; padding: 0; font-weight: 800; background: transparent; border: 1.5px solid var(--c); color: var(--c); }
   .group-chip.on { background: var(--c); color: #1d2228; }
-  .exercise-head { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-bottom: 8px; }
+  .exercise-head { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 6px; margin-bottom: 8px; }
+  .swap { position: relative; width: 44px; padding: 0; background: var(--raised); border: 1px solid var(--line); color: var(--blue); display: grid; place-items: center; }
+  .swap svg { width: 22px; height: 22px; }
+  .swap-count[hidden] { display: none; }
+  .swap-count {
+    position: absolute; top: -6px; right: -4px;
+    min-width: 18px; height: 18px; padding: 0 4px;
+    border-radius: 9px; background: var(--blue-btn); color: #fff;
+    font-size: 0.7rem; font-weight: 800; line-height: 18px; text-align: center;
+    box-shadow: 0 0 0 2px var(--card);
+  }
   .exercise-head .name { font-weight: 700; font-size: 1.05rem; }
   .remove-exercise { background: transparent; color: var(--muted); font-size: 1.1rem; }
   .remove-exercise:active { color: var(--red); }
@@ -135,7 +146,7 @@
     vertical-align: -4px;
     border-radius: 50%;
     --pc: #8fa0b5;
-    background: radial-gradient(circle, var(--raised) 0 2.5px, var(--pc) 3px);
+    background: var(--pc);
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.35);
   }
   .field + .field { margin-top: 8px; }
@@ -209,6 +220,22 @@
   .notice.ok { background: var(--green-soft); color: var(--green); }
   .notice.err { background: var(--red-soft); color: #ffb4ae; }
 
+  /* e-mail and media */
+  .extras .hint { margin-top: 6px; }
+  .pick-media { width: 100%; height: 48px; background: var(--field); border: 1.5px dashed #56698a; color: var(--blue); font-weight: 700; }
+  .media-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+  .media-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 12px; }
+  .media-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+  .media-state { display: block; font-size: 0.82rem; color: var(--muted); }
+  .media-item.done .media-state { color: var(--green); }
+  .media-item.error .media-state { color: #ffb4ae; }
+  .media-track { height: 4px; border-radius: 2px; background: var(--field); margin-top: 6px; overflow: hidden; }
+  .media-track i { display: block; height: 100%; width: 0; background: var(--blue-btn); }
+  .media-item.done .media-track i { background: var(--green); }
+  .media-item button { width: 40px; height: 40px; padding: 0; background: transparent; color: var(--muted); }
+  .media-item .media-retry { width: auto; padding: 0 10px; color: var(--blue); font-weight: 700; font-size: 0.9rem; }
+  #pinBox { margin-top: 14px; }
+
   @media (prefers-reduced-motion: reduce) { button:active { transform: none; } }
 </style>
 </head>
@@ -253,6 +280,21 @@
 
     <button type="button" id="addExercise" class="add-exercise">+ Dodaj ćwiczenie</button>
 
+    <div class="card extras">
+      <label for="emails">Podsumowanie e-mailem</label>
+      <input id="emails" type="text" inputmode="email" autocapitalize="off" placeholder="adres@example.com, drugi@example.com">
+      <p class="hint">Wiele adresów oddziel przecinkami. Adresy zostają zapamiętane na tym urządzeniu; puste pole = nic nie wysyłam.</p>
+      <div class="field-title" style="margin-top:14px">Zdjęcia i filmy</div>
+      <button type="button" class="pick-media" id="pickMedia">+ Dodaj zdjęcia lub filmy</button>
+      <input type="file" id="media" accept="image/*,video/*" multiple hidden>
+      <ul class="media-list" id="mediaList"></ul>
+      <div id="pinBox" class="hidden">
+        <label for="pin">Kod dostępu do wysyłki</label>
+        <input id="pin" type="password" autocomplete="off" placeholder="PIN ze skryptu Google">
+        <p class="hint">Ten sam, który jest w skrypcie jako właściwość PIN. Zapamiętuję go na tym urządzeniu.</p>
+      </div>
+    </div>
+
     <div class="bar">
       <div class="bar-inner">
         <button type="submit" class="primary" id="submit">Zapisz trening</button>
@@ -266,7 +308,7 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 4;
+  const EXPECTED_SCRIPT_VERSION = 5;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
@@ -274,6 +316,8 @@
 
   const NEW_VALUE = '__new__';
   const LAST_SELECTED_KEY = 'trainings.lastSelected';
+  const EMAILS_KEY = 'trainings.emails';
+  const PIN_KEY = 'trainings.pin';
 
   // Step of the − / + buttons.
   const STEP = { reps: 1, time: 5, weight: 2.5 };
@@ -284,7 +328,8 @@
   const exercisesEl = $('exercises');
   const submitBtn = $('submit');
 
-  // trainings = [{ name, lastDate, exercises: [{ name, mode, note, sets: [{ reps, seconds, weight }] }] }]
+  // trainings = [{ name, lastDate, exercises: [{ name, code, group, mode, note, date, inLast, sets: [{ reps, seconds, weight }] }] }]
+  // code = block letter + section + variant letter (A1, C2a, C2b); exercises of one section are alternatives.
   // weight is a number (kg), 'BW' or null.
   let trainings = [];
 
@@ -464,17 +509,140 @@
     renumber(card);
   }
 
-  function createExercise(data) {
+  // ---------- variants: alternatives of one section (C2a, C2b …) ----------
+
+  const SWAP_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h16M20 8l-3.5-3.5M20 8l-3.5 3.5M20 16H4M4 16l3.5-3.5M4 16l3.5 3.5"/></svg>';
+
+  function slotOf(code) {
+    const m = /^([A-Z]\d+)[a-z]?$/.exec(code || '');
+    return m ? m[1] : '';
+  }
+
+  function splitCode(code) {
+    const m = /^([A-Z])(.*)$/.exec(code || '');
+    return m && GROUPS.includes(m[1]) ? { group: m[1], rest: m[2] } : { group: '', rest: '' };
+  }
+
+  function cardCode(card) {
+    const group = card.dataset.group || '';
+    if (!group) return '';
+    const rest = card.querySelector('.code-input').value.trim().toLowerCase();
+    return /^\d{1,2}[a-z]?$/.test(rest) ? group + rest : group;
+  }
+
+  // A1 is variant a, A1a the same; the next free letter follows the highest one in use.
+  function nextVariantCode(slot, variants) {
+    let max = 1;
+    variants.forEach((v) => {
+      const m = /([a-z])$/.exec(v.code || '');
+      max = Math.max(max, m ? m[1].charCodeAt(0) - 96 : 1);
+    });
+    return slot + String.fromCharCode(97 + max);
+  }
+
+  // One tile per section: [{ variants: [exercise…], index }] — the variant done last time is shown first.
+  function buildCards(training) {
+    const cards = [];
+    const bySlot = {};
+    training.exercises.forEach((e) => {
+      const slot = slotOf(e.code);
+      if (slot) {
+        if (!bySlot[slot]) { bySlot[slot] = { variants: [], index: -1 }; cards.push(bySlot[slot]); }
+        const entry = bySlot[slot];
+        entry.variants.push(e);
+        if (e.inLast && entry.index < 0) entry.index = entry.variants.length - 1;
+      } else if (e.inLast) {
+        cards.push({ variants: [e], index: 0 });
+      }
+    });
+    return cards.filter((c) => c.index >= 0);
+  }
+
+  // What is typed in the tile right now, in the shape of an exercise from the sheet.
+  function snapshot(card) {
+    const c = readCard(card);
+    const timed = c.mode === 'time';
+    const blank = c.sets.every((s) => Number.isNaN(s.value) && Number.isNaN(s.weight));
+    const number = (n) => (Number.isNaN(n) ? 0 : n);
+    return {
+      name: c.name, code: c.code, mode: c.mode, note: c.note, fromForm: true,
+      sets: blank ? [] : c.sets.map((s) => ({
+        reps: timed ? 0 : number(s.value),
+        seconds: timed ? number(s.value) : 0,
+        weight: s.weight === 'BW' ? 'BW' : (Number.isNaN(s.weight) ? null : s.weight)
+      }))
+    };
+  }
+
+  function updateSwap(card) {
+    const count = card._variants.length;
+    const badge = card.querySelector('.swap-count');
+    badge.textContent = count > 1 ? (card._index + 1) + '/' + count : '';
+    badge.hidden = count === 1;
+    const swap = card.querySelector('.swap');
+    swap.disabled = count === 1 && !card.querySelector('.name').value.trim();
+    swap.setAttribute('aria-label', count > 1
+      ? 'Zmień ćwiczenie (' + (card._index + 1) + ' z ' + count + ')'
+      : 'Dodaj inne ćwiczenie w tej sekcji');
+  }
+
+  // Next alternative of this section; with none, a blank tile for a new exercise.
+  function swapVariant(card) {
+    const variants = card._variants;
+    variants[card._index] = snapshot(card);
+    if (variants.length === 1) {
+      if (!variants[0].name) return;
+      const slot = card._slot;
+      variants.push({
+        name: '', mode: 'reps', note: '', sets: [], fromForm: true,
+        code: slot ? nextVariantCode(slot, variants) : (variants[0].code || '')
+      });
+      card._index = 1;
+    } else {
+      card._index = (card._index + 1) % variants.length;
+    }
+    loadVariant(card, variants[card._index]);
+    refresh();
+    const name = card.querySelector('.name');
+    if (!name.value) name.focus();
+  }
+
+  function loadVariant(card, data) {
+    card.dataset.mode = data && data.mode === 'time' ? 'time' : 'reps';
+    card.querySelector('.name').value = (data && data.name) || '';
+    const { group, rest } = splitCode(data && data.code);
+    card.querySelector('.code-input').value = rest;
+    applyGroup(card, group);
+    applyMode(card);
+
+    // The remark stored in the sheet is last time's (shown as a hint); only typed remarks are kept.
+    const note = data && data.fromForm ? data.note : '';
+    card.querySelector('.note-input').value = note || '';
+    card.querySelector('.note-field').classList.toggle('hidden', !note);
+    card.querySelector('.note-toggle').classList.toggle('hidden', Boolean(note));
+
+    card.querySelector('.sets').innerHTML = '';
+    const sets = data && data.sets && data.sets.length ? data.sets : [null];
+    sets.forEach((s) => createSet(card, s));
+    updateSwap(card);
+  }
+
+  function createExercise(variants, startIndex) {
+    const list = variants && variants.length ? variants.slice() : [null];
     const card = document.createElement('div');
     card.className = 'card exercise';
-    card.dataset.mode = data && data.mode === 'time' ? 'time' : 'reps';
+    card._variants = list;
+    card._index = startIndex || 0;
+    card._slot = slotOf(list[0] && list[0].code);
     card.innerHTML =
       '<div class="exercise-head">' +
         '<input type="text" class="name" list="exerciseNames" placeholder="Nazwa ćwiczenia">' +
+        '<button type="button" class="swap" title="Zmień ćwiczenie">' + SWAP_ICON + '<span class="swap-count">1</span></button>' +
         '<button type="button" class="remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
       '</div>' +
       '<div class="groups" role="group" aria-label="Blok ćwiczenia"><span class="groups-label">Blok</span>' +
         GROUPS.map((g) => '<button type="button" class="group-chip" data-group="' + g + '" style="--c:' + GROUP_COLORS[g] + '">' + g + '</button>').join('') +
+        '<input type="text" class="code-input" inputmode="text" autocapitalize="none" maxlength="3" placeholder="a/b" aria-label="Numer sekcji i litera wariantu, np. 1a">' +
       '</div>' +
       '<p class="prev"></p>' +
       '<div class="segmented">' +
@@ -487,10 +655,6 @@
       '</div>' +
       '<button type="button" class="link-btn note-toggle">+ Uwaga do ćwiczenia</button>' +
       '<div class="note-field hidden"><input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>';
-
-    card.querySelector('.name').value = (data && data.name) || '';
-    applyMode(card);
-    applyGroup(card, data && data.group);
 
     card.querySelector('.remove-exercise').addEventListener('click', () => {
       card.remove();
@@ -522,8 +686,7 @@
       refresh();
     });
 
-    const sets = data && data.sets && data.sets.length ? data.sets : [null];
-    sets.forEach((s) => createSet(card, s));
+    loadVariant(card, list[card._index]);
     exercisesEl.appendChild(card);
     return card;
   }
@@ -541,6 +704,7 @@
       name: card.querySelector('.name').value.trim(),
       mode: modeOf(card),
       group: card.dataset.group || '',
+      code: cardCode(card),
       note: card.querySelector('.note-input').value.trim(),
       sets
     };
@@ -603,6 +767,7 @@
     const current = readCard(card);
     const previous = findPrevious(current.name);
     markChanges(card, previous);
+    updateSwap(card);
     const hint = card.querySelector('.prev');
     hint.textContent = '';
 
@@ -612,7 +777,9 @@
       return;
     }
 
-    hint.append('Poprzednio: ' + describeSets(previous));
+    const training = currentTraining();
+    const older = training && previous.date && previous.date !== training.lastDate ? ' (' + previous.date + ')' : '';
+    hint.append('Poprzednio' + older + ': ' + describeSets(previous));
     const validSets = current.sets.filter((s) => !Number.isNaN(s.value));
     if (validSets.length) {
       const parts = diffParts(summarize(previous.mode, previousSets(previous)), summarize(current.mode, validSets));
@@ -636,7 +803,7 @@
     const training = currentTraining();
     $('newNameBox').classList.toggle('hidden', !isNewTraining());
     if (training) {
-      training.exercises.forEach(createExercise);
+      buildCards(training).forEach((entry) => createExercise(entry.variants, entry.index));
       $('lastInfo').textContent = training.lastDate
         ? 'Wyniki z ostatniego treningu (' + training.lastDate + '). Zmień to, co poszło inaczej.'
         : 'Ten trening nie ma jeszcze żadnych wpisów.';
@@ -653,6 +820,174 @@
     exercisesEl.querySelectorAll('.exercise').forEach(updateCard);
   }
 
+  // ---------- e-mail and photos / videos ----------
+
+  const UPLOAD_CHUNK = 6 * 256 * 1024; // Drive wants multiples of 256 KiB
+  const MEDIA_MAX = 20;
+  let media = []; // [{ key, file, status: 'queued' | 'uploading' | 'done' | 'error', progress, id, error }]
+  let pumping = false;
+
+  const pinValue = () => $('pin').value.trim();
+
+  function parseEmails() {
+    return $('emails').value.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean);
+  }
+
+  function updatePinBox() {
+    $('pinBox').classList.toggle('hidden', !parseEmails().length && !media.length);
+  }
+
+  async function postJson(body) {
+    const response = await fetch(SCRIPT_URL, { method: 'POST', body: JSON.stringify(body) });
+    const result = await response.json();
+    if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+    return result;
+  }
+
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  function toBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+      reader.onerror = () => reject(new Error('Nie udało się odczytać pliku.'));
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Photos are scaled down (long side 2000 px) so they upload fast; videos go as they are.
+  async function prepareFile(file) {
+    if (!file.type.startsWith('image/') || /gif|svg/.test(file.type)) return file;
+    try {
+      const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+      const scale = Math.min(1, 2000 / Math.max(bitmap.width, bitmap.height));
+      if (scale === 1 && file.size < 1500000) { bitmap.close(); return file; }
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(bitmap.width * scale);
+      canvas.height = Math.round(bitmap.height * scale);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      bitmap.close();
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+      if (blob && blob.size < file.size) return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+    } catch (error) { /* unsupported format: send the original */ }
+    return file;
+  }
+
+  async function uploadItem(item) {
+    item.status = 'uploading';
+    item.progress = 0;
+    item.error = '';
+    renderMedia();
+    try {
+      const pin = pinValue();
+      if (!pin) throw new Error('Najpierw wpisz kod dostępu.');
+      const file = await prepareFile(item.file);
+      const training = isNewTraining() ? $('newName').value.trim() : trainingSelect.value;
+      const name = [$('date').value || today(), training, file.name].filter(Boolean).join(' – ');
+      const start = await postJson({ action: 'uploadStart', name, mime: file.type || 'application/octet-stream', size: file.size, pin });
+      let offset = 0;
+      while (offset < file.size) {
+        const end = Math.min(offset + UPLOAD_CHUNK, file.size);
+        const data = await toBase64(file.slice(offset, end));
+        let result;
+        for (let attempt = 1; ; attempt++) {
+          try {
+            result = await postJson({ action: 'uploadChunk', uploadId: start.uploadId, offset, data, pin });
+            break;
+          } catch (error) {
+            if (attempt >= 3) throw error;
+            await sleep(800 * attempt);
+          }
+        }
+        offset = end;
+        item.progress = offset / file.size;
+        if (result.done) item.id = result.id;
+        renderMedia();
+      }
+      if (!item.id) throw new Error('Dysk Google nie potwierdził zapisu pliku.');
+      item.status = 'done';
+    } catch (error) {
+      item.status = 'error';
+      item.error = error.message;
+    }
+    renderMedia();
+  }
+
+  async function pumpUploads() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      for (;;) {
+        const next = media.find((m) => m.status === 'queued');
+        if (!next) break;
+        await uploadItem(next);
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+
+  function formatSize(bytes) {
+    return bytes >= 1048576 ? (bytes / 1048576).toFixed(1).replace('.', ',') + ' MB' : Math.max(1, Math.round(bytes / 1024)) + ' kB';
+  }
+
+  function renderMedia() {
+    const list = $('mediaList');
+    list.innerHTML = '';
+    media.forEach((item) => {
+      const li = document.createElement('li');
+      li.className = 'media-item ' + item.status;
+      li.dataset.key = item.key;
+      const state = {
+        queued: 'Czeka na wysłanie…',
+        uploading: 'Wysyłam… ' + Math.round(item.progress * 100) + '%',
+        done: 'Wysłano na Dysk Google ✓',
+        error: item.error || 'Nie udało się wysłać.'
+      }[item.status];
+      li.innerHTML =
+        '<div><span class="media-name"></span><span class="media-state"></span><div class="media-track"><i></i></div></div>' +
+        (item.status === 'error' ? '<button type="button" class="media-retry">Ponów</button>' : '<span></span>') +
+        '<button type="button" class="media-remove" aria-label="Usuń z listy">✕</button>';
+      li.querySelector('.media-name').textContent = item.file.name + ' · ' + formatSize(item.file.size);
+      li.querySelector('.media-state').textContent = state;
+      li.querySelector('.media-track i').style.width = (item.status === 'done' ? 100 : Math.round(item.progress * 100)) + '%';
+      list.appendChild(li);
+    });
+    updatePinBox();
+  }
+
+  $('pickMedia').addEventListener('click', () => $('media').click());
+  $('media').addEventListener('change', (event) => {
+    const files = [...event.target.files];
+    event.target.value = '';
+    files.forEach((file) => {
+      if (media.length >= MEDIA_MAX) return;
+      media.push({ key: String(Date.now()) + Math.random().toString(36).slice(2), file, status: 'queued', progress: 0, id: '', error: '' });
+    });
+    renderMedia();
+    pumpUploads();
+  });
+  $('mediaList').addEventListener('click', (event) => {
+    const li = event.target.closest('.media-item');
+    if (!li) return;
+    const item = media.find((m) => m.key === li.dataset.key);
+    if (!item) return;
+    if (event.target.closest('.media-retry')) {
+      item.status = 'queued';
+      renderMedia();
+      pumpUploads();
+    } else if (event.target.closest('.media-remove') && item.status !== 'uploading') {
+      media = media.filter((m) => m !== item);
+      renderMedia();
+    }
+  });
+  $('emails').addEventListener('input', updatePinBox);
+  ['emails', 'pin'].forEach((id) => {
+    $(id).addEventListener('change', () => {
+      try { localStorage.setItem(id === 'pin' ? PIN_KEY : EMAILS_KEY, $(id).value.trim()); } catch (e) {}
+    });
+  });
+
   // ---------- saving ----------
 
   function collectValid() {
@@ -666,7 +1001,7 @@
           seconds: c.mode === 'time' ? s.value : null,
           weight: s.weight === 'BW' || Number.isNaN(s.weight) ? 'BW' : s.weight // empty kilograms = bodyweight
         }));
-      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, group: c.group, note: c.note, sets });
+      if (c.name && sets.length) valid.push({ name: c.name, mode: c.mode, code: c.code, note: c.note, sets });
     });
     return valid;
   }
@@ -686,6 +1021,20 @@
     const exercises = collectValid();
     if (!exercises.length) { showStatus('err', 'Dodaj co najmniej jedno ćwiczenie z nazwą i serią (powtórzenia lub czas).'); return; }
 
+    if (media.some((m) => m.status === 'queued' || m.status === 'uploading')) {
+      showStatus('warn', 'Poczekaj, aż pliki się wyślą, i zapisz ponownie.');
+      return;
+    }
+    if (media.some((m) => m.status === 'error')) {
+      showStatus('err', 'Część plików się nie wysłała — ponów ją albo usuń z listy.');
+      return;
+    }
+    const emails = parseEmails();
+    const badEmail = emails.find((e) => !/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(e));
+    if (badEmail) { showStatus('err', 'Nieprawidłowy adres e-mail: ' + badEmail); return; }
+    if (emails.length > 5) { showStatus('err', 'Maksymalnie 5 adresów e-mail.'); return; }
+    if ((emails.length || media.length) && !pinValue()) { showStatus('err', 'Podaj kod dostępu do wysyłki (pole na dole formularza).'); return; }
+
     submitBtn.disabled = true;
     showStatus('warn', 'Zapisuję…');
     try {
@@ -697,11 +1046,16 @@
           create: creating,
           date: $('date').value,
           notes: $('notes').value.trim(),
-          exercises
+          exercises,
+          emails,
+          media: media.map((m) => ({ id: m.id })),
+          pin: emails.length || media.length ? pinValue() : ''
         })
       });
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+      media = [];
+      renderMedia();
 
       try { await loadTrainings(); } catch (error) { /* saved anyway; keep the previous list */ }
       renderTrainingSelect(result.sheet);
@@ -712,7 +1066,10 @@
       $('newName').value = '';
       $('date').value = today();
       renderExercises();
-      showStatus('ok', 'Zapisano w zakładce „' + result.sheet + '” (' + exercises.length + ' ćw.).');
+      let message = 'Zapisano w zakładce „' + result.sheet + '” (' + exercises.length + ' ćw.).';
+      if (result.emailed) message += ' Wysłano podsumowanie na ' + result.emailed + ' adr.';
+      if (result.emailError) message += ' Maila nie udało się wysłać: ' + result.emailError;
+      showStatus(result.emailError ? 'err' : 'ok', message);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       showStatus('err', 'Nie udało się zapisać: ' + error.message + ' Dane zostały na stronie, spróbuj ponownie.');
@@ -727,7 +1084,12 @@
     try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
     renderExercises();
   });
-  form.addEventListener('input', refresh);
+  form.addEventListener('input', (event) => {
+    if (event.target.classList.contains('code-input')) {
+      event.target.value = event.target.value.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+    }
+    refresh();
+  });
 
   $('showNotes').addEventListener('click', (event) => {
     event.currentTarget.classList.add('hidden');
@@ -737,6 +1099,12 @@
 
   exercisesEl.addEventListener('click', (event) => {
     const target = event.target;
+
+    const swap = target.closest('.swap');
+    if (swap) {
+      swapVariant(swap.closest('.exercise'));
+      return;
+    }
 
     const chip = target.closest('.group-chip');
     if (chip) {
@@ -799,6 +1167,11 @@
     try { remembered = localStorage.getItem(LAST_SELECTED_KEY); } catch (e) {}
     renderTrainingSelect(remembered);
     renderExercises();
+    try {
+      $('emails').value = localStorage.getItem(EMAILS_KEY) || '';
+      $('pin').value = localStorage.getItem(PIN_KEY) || '';
+    } catch (e) {}
+    updatePinBox();
   }
 
   init();

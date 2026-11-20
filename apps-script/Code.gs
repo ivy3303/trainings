@@ -5,28 +5,45 @@
  *
  *   Blok | Ćwiczenie | Seria |  2026-11-10   |  2026-11-24   | ...
  *        |           |       | Powt./czas | Kg | Powt./czas | Kg | ...
- *    A   | Wioślarz  |   1   |   120 s    |    |            |    |
+ *   A0   | Wioślarz  |   1   |   120 s    |    |            |    |
  *    ...
+ *
+ * "Blok" holds the exercise code from the plan: block letter + section number + optional
+ * variant letter, e.g. A1, C2a, C2b. Variants of one section (C2a / C2b) are alternatives:
+ * the form shows one tile per section and lets you switch between its variants.
  *
  * Exercises and sets are rows; every saved session adds two columns on the right
  * (reps or seconds, and kg). Reps are coloured against the previous date:
  * green = more, red = fewer, blue = the same. Remarks sit in cell notes:
- * the exercise remark on the first set's reps cell, the session remark on the date.
+ * the exercise remark on the first set's reps cell, the session remark (and links to photos
+ * and videos) on the date.
  *
  * GET  ?action=list  -> { ok, version, trainings: [{ name, lastDate, exercises }] }
- *                       exercises = the last session of the training (used to prefill the form):
- *                       [{ name, mode, note, group, sets: [{ reps, seconds, weight }] }]
+ *                       exercises = every exercise of the training with its most recent results:
+ *                       [{ name, code, group, mode, note, date, inLast, sets: [{ reps, seconds, weight }] }]
+ *                       inLast = it was done in the training's last session.
  * POST (JSON as text/plain)
+ *   save a session:
  *   { training, create, date: "YYYY-MM-DD", notes,
- *     exercises: [{ name, mode: "reps" | "time", note, group (optional block letter, e.g. "A"),
- *                   sets: [{ reps, seconds, weight }] }] }
+ *     exercises: [{ name, mode: "reps" | "time", note, code (e.g. "A1", "C2b"; optional),
+ *                   sets: [{ reps, seconds, weight }] }],
+ *     emails: ["a@b.pl"], media: [{ id }], pin }
  *   create=true makes a new tab, create=false adds a column pair to an existing one.
  *   mode "reps" uses sets[].reps, mode "time" uses sets[].seconds;
  *   weight is optional: a number (kg), "BW" or empty.
+ *   emails -> a summary of the session is mailed from the owner's account (needs pin).
+ *   media  -> files already uploaded to the "Treningi – media" Drive folder (see below).
+ *   upload a photo or video to Drive in chunks (all need pin):
+ *   { action: "uploadStart", name, mime, size, pin }            -> { ok, uploadId }
+ *   { action: "uploadChunk", uploadId, offset, data (base64), pin } -> { ok, done, id?, url? }
+ *
+ * Mail and Drive are only available when the script property PIN is set
+ * (Project settings -> Script properties); the page sends it with every such request.
+ * Run authorize() once from the editor to grant the Drive and Mail permissions.
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 4;
+var VERSION = 5;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
 var HEADER_ROWS = 2;
 var FIRST_SESSION_COL = 4;
@@ -35,6 +52,9 @@ var REPS_FORMAT = '0';
 var WEIGHT_FORMAT = '0.0#';
 var COLOR_NAVY = '#0f2a4a';
 var COLOR_SUBHEADER = '#e4e9f2';
+var MEDIA_FOLDER = 'Treningi – media';
+var MAX_EMAILS = 5;
+var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
 var GROUP_COLORS = { A: '#c6ebdc', B: '#fbd9b8', C: '#cbdcf9', D: '#efcff2', E: '#f8edb0' };
 var COLOR_MORE = '#c8ecd3';
@@ -54,11 +74,24 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  try {
+    var data = JSON.parse(e.postData.contents);
+    if (data && data.action === 'uploadStart') return json_(uploadStart_(data));
+    if (data && data.action === 'uploadChunk') return json_(uploadChunk_(data));
+    return json_(saveSession_(data));
+  } catch (error) {
+    return json_({ ok: false, error: message_(error) });
+  }
+}
+
+function saveSession_(data) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
-    var data = JSON.parse(e.postData.contents);
     validate_(data);
+    var emails = data.emails || [];
+    var media = data.media || [];
+    if (emails.length || media.length) requirePin_(data);
 
     var spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
     var timeZone = spreadsheet.getSpreadsheetTimeZone();
@@ -77,10 +110,21 @@ function doPost(e) {
       }
     }
 
-    appendSession_(sheet, data, timeZone);
-    return json_({ ok: true, sheet: sheet.getName() });
-  } catch (error) {
-    return json_({ ok: false, error: message_(error) });
+    var files = media.length ? mediaFiles_(media) : [];
+    var before = emails.length ? previousByName_(sheet, timeZone) : {};
+    appendSession_(sheet, data, timeZone, files);
+
+    var result = { ok: true, sheet: sheet.getName(), media: files.length };
+    if (emails.length) {
+      try {
+        shareFiles_(files, emails);
+        sendSummary_(data, sheet.getName(), before, files, emails);
+        result.emailed = emails.length;
+      } catch (error) {
+        result.emailError = message_(error);
+      }
+    }
+    return result;
   } finally {
     lock.releaseLock();
   }
@@ -103,7 +147,7 @@ function listTrainings_() {
     return {
       name: sheet.getName(),
       lastDate: last ? last.date : '',
-      exercises: last ? sessionExercises_(sheet, layout, last) : []
+      exercises: last ? latestExercises_(sheet, layout) : []
     };
   });
 }
@@ -120,9 +164,11 @@ function readLayout_(sheet, timeZone) {
     left.forEach(function (row, index) {
       var name = String(row[1]).trim();
       if (!name) return;
+      var code = normalizeCode_(row[0]);
       rows.push({
         row: HEADER_ROWS + 1 + index,
-        group: String(row[0] || '').trim().toUpperCase(),
+        code: code,
+        group: code.charAt(0),
         name: name,
         set: Number(row[2]) || 1
       });
@@ -144,40 +190,65 @@ function formatDate_(value, timeZone) {
   return String(value);
 }
 
-/** Exercises (with their sets) that have results in the given session column pair. */
-function sessionExercises_(sheet, layout, session) {
-  if (!layout.rows.length) return [];
+/**
+ * Every exercise of the tab with its most recent results (the latest session in which it has data).
+ * inLast tells whether that session is the tab's last one.
+ */
+function latestExercises_(sheet, layout) {
+  if (!layout.rows.length || !layout.sessions.length) return [];
   var lastRow = layout.rows[layout.rows.length - 1].row;
   var count = lastRow - HEADER_ROWS;
-  var values = sheet.getRange(HEADER_ROWS + 1, session.col, count, 2).getValues();
-  var formats = sheet.getRange(HEADER_ROWS + 1, session.col, count, 1).getNumberFormats();
-  var notes = sheet.getRange(HEADER_ROWS + 1, session.col, count, 1).getNotes();
+  var firstCol = layout.sessions[0].col;
+  var lastSession = layout.sessions[layout.sessions.length - 1];
+  var width = lastSession.col + 2 - firstCol;
+  var range = sheet.getRange(HEADER_ROWS + 1, firstCol, count, width);
+  var values = range.getValues();
+  var formats = range.getNumberFormats();
+  var notes = range.getNotes();
 
   var order = [];
   var byKey = {};
   layout.rows.forEach(function (entry) {
-    var index = entry.row - HEADER_ROWS - 1;
-    var main = values[index][0];
-    var weight = values[index][1];
-    if ((main === '' || main === null) && (weight === '' || weight === null)) return;
-
     var key = entry.name.toLowerCase();
-    if (!byKey[key]) {
-      byKey[key] = { name: entry.name, mode: 'reps', note: '', group: entry.group, sets: [] };
-      order.push(key);
-    }
-    var exercise = byKey[key];
-    var timed = String(formats[index][0]).indexOf(' s"') >= 0;
-    if (timed) exercise.mode = 'time';
-    if (!exercise.note && notes[index][0]) exercise.note = String(notes[index][0]);
-    var amount = Number(main) || 0;
-    exercise.sets.push({
-      reps: timed ? 0 : amount,
-      seconds: timed ? amount : 0,
-      weight: weight === '' || weight === null ? null : (isBodyweight_(weight) ? 'BW' : Number(weight))
-    });
+    if (!byKey[key]) { byKey[key] = { entry: entry, rows: [] }; order.push(key); }
+    byKey[key].rows.push(entry);
   });
-  return order.map(function (key) { return byKey[key]; });
+
+  var result = [];
+  order.forEach(function (key) {
+    var item = byKey[key];
+    for (var s = layout.sessions.length - 1; s >= 0; s--) {
+      var session = layout.sessions[s];
+      var c = session.col - firstCol;
+      var exercise = { name: item.entry.name, code: item.entry.code, group: item.entry.group, mode: 'reps', note: '', date: session.date, inLast: s === layout.sessions.length - 1, sets: [] };
+      item.rows.forEach(function (entry) {
+        var index = entry.row - HEADER_ROWS - 1;
+        var main = values[index][c];
+        var weight = values[index][c + 1];
+        if ((main === '' || main === null) && (weight === '' || weight === null)) return;
+        var timed = String(formats[index][c]).indexOf(' s"') >= 0;
+        if (timed) exercise.mode = 'time';
+        if (!exercise.note && notes[index][c]) exercise.note = String(notes[index][c]);
+        var amount = Number(main) || 0;
+        exercise.sets.push({
+          reps: timed ? 0 : amount,
+          seconds: timed ? amount : 0,
+          weight: weight === '' || weight === null ? null : (isBodyweight_(weight) ? 'BW' : Number(weight))
+        });
+      });
+      if (exercise.sets.length) { result.push(exercise); return; }
+    }
+  });
+  return result;
+}
+
+/** Results from before the new session, by lower-case exercise name (for the e-mail comparison). */
+function previousByName_(sheet, timeZone) {
+  var map = {};
+  latestExercises_(sheet, readLayout_(sheet, timeZone)).forEach(function (exercise) {
+    map[exercise.name.toLowerCase()] = exercise;
+  });
+  return map;
 }
 
 // ---------- writing ----------
@@ -188,14 +259,27 @@ function validate_(data) {
   if (!data.training || !String(data.training).trim()) throw new Error('Brak nazwy treningu.');
   if (!data.exercises || !data.exercises.length) throw new Error('Brak ćwiczeń.');
   if (data.exercises.length > 50) throw new Error('Za dużo ćwiczeń.');
+  if (data.emails !== undefined && !Array.isArray(data.emails)) throw new Error('Nieprawidłowa lista e-maili.');
+  if ((data.emails || []).length > MAX_EMAILS) throw new Error('Maksymalnie ' + MAX_EMAILS + ' adresów e-mail.');
+  (data.emails || []).forEach(function (address) {
+    if (!/^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(String(address))) {
+      throw new Error('Nieprawidłowy adres e-mail: ' + address);
+    }
+  });
+  if (data.media !== undefined && !Array.isArray(data.media)) throw new Error('Nieprawidłowa lista plików.');
+  if ((data.media || []).length > MAX_MEDIA) throw new Error('Maksymalnie ' + MAX_MEDIA + ' plików.');
+  (data.media || []).forEach(function (item) {
+    if (!item || !/^[A-Za-z0-9_-]{10,}$/.test(String(item.id))) throw new Error('Nieprawidłowy plik.');
+  });
   data.exercises.forEach(function (exercise) {
     var label = '"' + exercise.name + '"';
     if (!exercise.name || !String(exercise.name).trim()) throw new Error('Ćwiczenie bez nazwy.');
     if (!exercise.sets || !exercise.sets.length || exercise.sets.length > 30) {
       throw new Error('Nieprawidłowa liczba serii w ćwiczeniu ' + label + '.');
     }
-    if (exercise.group && !/^[A-Za-z]$/.test(String(exercise.group))) {
-      throw new Error('Nieprawidłowy blok w ćwiczeniu ' + label + '.');
+    var rawCode = exercise.code || exercise.group;
+    if (rawCode && !normalizeCode_(rawCode)) {
+      throw new Error('Nieprawidłowy kod (np. A1, C2b) w ćwiczeniu ' + label + '.');
     }
     var timed = exercise.mode === 'time';
     exercise.sets.forEach(function (set) {
@@ -231,9 +315,10 @@ function createTrainingSheet_(spreadsheet, name) {
 
 /**
  * Returns the sheet rows (in set order) for an exercise, inserting rows when the exercise is
- * new or has fewer sets than needed. New exercises are placed under the last row of their block.
+ * new or has fewer sets than needed. New exercises are placed under the last row of their
+ * section (A1 for A1b), else of their block (A), else at the end.
  */
-function ensureRows_(sheet, timeZone, name, group, setCount) {
+function ensureRows_(sheet, timeZone, name, code, setCount) {
   var key = name.toLowerCase();
   var layout = readLayout_(sheet, timeZone);
   var own = layout.rows.filter(function (entry) { return entry.name.toLowerCase() === key; });
@@ -244,39 +329,42 @@ function ensureRows_(sheet, timeZone, name, group, setCount) {
     if (own.length) {
       after = own[own.length - 1].row;
     } else {
-      var sameBlock = group ? layout.rows.filter(function (entry) { return entry.group === group; }) : [];
-      after = sameBlock.length ? sameBlock[sameBlock.length - 1].row
+      var slot = slotOf_(code);
+      var sameSlot = slot ? layout.rows.filter(function (entry) { return slotOf_(entry.code) === slot; }) : [];
+      var sameBlock = code ? layout.rows.filter(function (entry) { return entry.group === code.charAt(0); }) : [];
+      after = sameSlot.length ? sameSlot[sameSlot.length - 1].row
+        : sameBlock.length ? sameBlock[sameBlock.length - 1].row
         : (layout.rows.length ? layout.rows[layout.rows.length - 1].row : HEADER_ROWS);
     }
     if (after >= sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), missing);
     else sheet.insertRowsAfter(after, missing);
     var fill = [];
     for (var i = 0; i < missing; i++) {
-      fill.push([group || '', own.length ? own[0].name : name, own.length + i + 1]);
+      fill.push([code || '', own.length ? own[0].name : name, own.length + i + 1]);
     }
     sheet.getRange(after + 1, 1, missing, 3).setValues(fill);
     layout = readLayout_(sheet, timeZone);
     own = layout.rows.filter(function (entry) { return entry.name.toLowerCase() === key; });
   }
 
-  // A block chosen on the page also updates the block of an existing exercise.
-  if (group) {
+  // A code chosen on the page also updates the code of an existing exercise.
+  if (code) {
     own.forEach(function (entry) {
-      if (entry.group !== group) sheet.getRange(entry.row, 1).setValue(group);
+      if (entry.code !== code) sheet.getRange(entry.row, 1).setValue(code);
     });
   }
   return own.slice(0, setCount).map(function (entry) { return entry.row; });
 }
 
-function appendSession_(sheet, data, timeZone) {
+function appendSession_(sheet, data, timeZone, files) {
   var date = Utilities.parseDate(data.date, timeZone, 'yyyy-MM-dd');
 
   // 1. Make sure every exercise has rows for all of its sets.
   var plan = data.exercises.map(function (exercise) {
     var timed = exercise.mode === 'time';
     var name = String(exercise.name).trim();
-    var group = String(exercise.group || '').trim().toUpperCase();
-    var rows = ensureRows_(sheet, timeZone, name, group, exercise.sets.length);
+    var code = normalizeCode_(exercise.code || exercise.group);
+    var rows = ensureRows_(sheet, timeZone, name, code, exercise.sets.length);
     return { exercise: exercise, timed: timed, name: name, rows: rows };
   });
 
@@ -329,7 +417,12 @@ function appendSession_(sheet, data, timeZone) {
   head.setNumberFormat('yyyy-mm-dd')
     .setBackground(COLOR_NAVY).setFontColor('#ffffff').setFontWeight('bold').setHorizontalAlignment('center');
   sheet.getRange(1, col).setValue(date);
-  if (data.notes && String(data.notes).trim()) sheet.getRange(1, col).setNote(String(data.notes).trim());
+  var headNote = [];
+  if (data.notes && String(data.notes).trim()) headNote.push(String(data.notes).trim());
+  if (files && files.length) {
+    headNote.push('Zdjęcia i filmy:\n' + files.map(function (file) { return '- ' + file.name + ': ' + file.url; }).join('\n'));
+  }
+  if (headNote.length) sheet.getRange(1, col).setNote(headNote.join('\n\n'));
   sheet.getRange(2, col, 1, 2).setValues([['Powt./czas', 'Kg']])
     .setBackground(COLOR_SUBHEADER).setFontWeight('bold').setHorizontalAlignment('center');
   sheet.setColumnWidth(col, 90);
@@ -371,7 +464,256 @@ function formatLeft_(sheet, timeZone) {
   });
 }
 
+// ---------- photos and videos ----------
+
+function requirePin_(data) {
+  var pin = PropertiesService.getScriptProperties().getProperty('PIN');
+  if (!pin) {
+    throw new Error('Maile i pliki są wyłączone: dodaj w skrypcie właściwość PIN (Ustawienia projektu → Właściwości skryptu).');
+  }
+  if (String(data.pin || '') !== pin) throw new Error('Zły kod dostępu.');
+}
+
+function mediaFolder_() {
+  var folders = DriveApp.getFoldersByName(MEDIA_FOLDER);
+  return folders.hasNext() ? folders.next() : DriveApp.createFolder(MEDIA_FOLDER);
+}
+
+/** Opens a resumable upload session in Drive; the page then sends the file in chunks. */
+function uploadStart_(data) {
+  requirePin_(data);
+  var size = Number(data.size);
+  if (!(size > 0)) throw new Error('Pusty plik.');
+  var name = String(data.name || 'plik').replace(/[\\/\\\\:*?"<>|]/g, '-').substring(0, 150);
+  var mime = String(data.mime || 'application/octet-stream');
+  var response = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&fields=id', {
+    method: 'post',
+    contentType: 'application/json; charset=UTF-8',
+    headers: {
+      Authorization: 'Bearer ' + ScriptApp.getOAuthToken(),
+      'X-Upload-Content-Type': mime,
+      'X-Upload-Content-Length': String(size)
+    },
+    payload: JSON.stringify({ name: name, mimeType: mime, parents: [mediaFolder_().getId()] }),
+    muteHttpExceptions: true
+  });
+  if (response.getResponseCode() !== 200) {
+    throw new Error('Dysk Google odrzucił plik (' + response.getResponseCode() + '): ' + response.getContentText().substring(0, 200));
+  }
+  var headers = response.getHeaders();
+  var uri = headers['Location'] || headers['location'];
+  if (!uri) throw new Error('Dysk Google nie zwrócił adresu wysyłki.');
+  var uploadId = Utilities.getUuid();
+  CacheService.getScriptCache().put(uploadId, JSON.stringify({ uri: uri, size: size, mime: mime, name: name }), 21600);
+  return { ok: true, uploadId: uploadId };
+}
+
+/** Forwards one chunk (multiples of 256 KiB, except the last) to the Drive upload session. */
+function uploadChunk_(data) {
+  requirePin_(data);
+  var raw = CacheService.getScriptCache().get(String(data.uploadId));
+  if (!raw) throw new Error('Wysyłka wygasła, dodaj plik jeszcze raz.');
+  var info = JSON.parse(raw);
+  var offset = Number(data.offset);
+  var bytes = Utilities.base64Decode(String(data.data));
+  if (!(offset >= 0) || !bytes.length || offset + bytes.length > info.size) throw new Error('Nieprawidłowy fragment pliku.');
+  var response = UrlFetchApp.fetch(info.uri, {
+    method: 'put',
+    contentType: info.mime,
+    headers: { 'Content-Range': 'bytes ' + offset + '-' + (offset + bytes.length - 1) + '/' + info.size },
+    payload: bytes,
+    followRedirects: false,
+    muteHttpExceptions: true
+  });
+  var code = response.getResponseCode();
+  if (code === 308) return { ok: true, done: false };
+  if (code === 200 || code === 201) {
+    var id = JSON.parse(response.getContentText()).id;
+    return { ok: true, done: true, id: id, name: info.name, url: fileUrl_(id) };
+  }
+  throw new Error('Wysyłka na Dysk nie powiodła się (' + code + ').');
+}
+
+function fileUrl_(id) {
+  return 'https://drive.google.com/file/d/' + id + '/view';
+}
+
+/** The uploaded files named by the page, only if they are really inside the media folder. */
+function mediaFiles_(media) {
+  var folderId = mediaFolder_().getId();
+  return media.map(function (item) {
+    var file = DriveApp.getFileById(String(item.id));
+    var parents = file.getParents();
+    while (parents.hasNext()) {
+      if (parents.next().getId() === folderId) return { id: file.getId(), name: file.getName(), url: fileUrl_(file.getId()), file: file };
+    }
+    throw new Error('Plik "' + file.getName() + '" nie jest w folderze "' + MEDIA_FOLDER + '".');
+  });
+}
+
+/** Lets the recipients open the files (Google accounts only; others just can't, which is fine). */
+function shareFiles_(files, emails) {
+  files.forEach(function (item) {
+    emails.forEach(function (address) {
+      try { item.file.addViewer(address); } catch (error) { /* not a Google account */ }
+    });
+  });
+}
+
+// ---------- e-mail summary ----------
+
+function sendSummary_(data, sheetName, before, files, emails) {
+  var summary = buildSummary_(data, sheetName, before, files);
+  MailApp.sendEmail({
+    to: emails.join(','),
+    subject: summary.subject,
+    body: summary.text,
+    htmlBody: summary.html,
+    name: 'Treningi'
+  });
+}
+
+function buildSummary_(data, sheetName, before, files) {
+  var parts = String(data.date).split('-');
+  var shownDate = parts[2] + '.' + parts[1] + '.' + parts[0];
+  var subject = 'Trening ' + sheetName + ' – ' + shownDate;
+  var text = [subject, ''];
+  var html = ['<div style="font-family:Arial,sans-serif;color:#17212b;max-width:560px">',
+    '<h2 style="margin:0 0 12px">' + esc_(subject) + '</h2>'];
+
+  if (data.notes && String(data.notes).trim()) {
+    text.push('Notatka: ' + String(data.notes).trim(), '');
+    html.push('<p style="margin:0 0 14px"><i>' + esc_(String(data.notes).trim()) + '</i></p>');
+  }
+
+  data.exercises.forEach(function (exercise) {
+    var mode = exercise.mode === 'time' ? 'time' : 'reps';
+    var code = normalizeCode_(exercise.code || exercise.group);
+    var sets = exercise.sets.map(function (set) {
+      return { value: Number(mode === 'time' ? set.seconds : set.reps), weight: setWeight_(set.weight) };
+    });
+    var now = describeSets_(mode, sets);
+    var prev = before[String(exercise.name).trim().toLowerCase()];
+    var prevText = '';
+    var diff = '';
+    if (prev) {
+      var prevSets = prev.sets.map(function (set) {
+        return { value: prev.mode === 'time' ? set.seconds : set.reps, weight: setWeight_(set.weight) };
+      });
+      prevText = describeSets_(prev.mode, prevSets);
+      diff = diffText_(summarize_(prev.mode, prevSets), summarize_(mode, sets));
+    }
+    var title = (code ? code + '  ' : '') + String(exercise.name).trim();
+    text.push(title, '  ' + now + (prevText ? '   (poprzednio: ' + prevText + (diff ? ', ' + diff : ', bez zmian') + ')' : ''));
+    var line = '<b>' + esc_(now) + '</b>';
+    if (prevText) line += ' <span style="color:#6b7684">· poprzednio: ' + esc_(prevText) + '</span> ' + (diff ? diffHtml_(diff) : '<span style="color:#6b7684">bez zmian</span>');
+    html.push('<div style="margin:0 0 12px"><div style="font-weight:700">' + esc_(title) + '</div><div>' + line + '</div>');
+    if (exercise.note && String(exercise.note).trim()) {
+      text.push('  Uwaga: ' + String(exercise.note).trim());
+      html.push('<div style="color:#6b7684">Uwaga: ' + esc_(String(exercise.note).trim()) + '</div>');
+    }
+    text.push('');
+    html.push('</div>');
+  });
+
+  if (files && files.length) {
+    text.push('Zdjęcia i filmy:');
+    html.push('<div style="margin-top:6px"><b>Zdjęcia i filmy</b><ul style="margin:4px 0 0;padding-left:20px">');
+    files.forEach(function (file) {
+      text.push('- ' + file.name + ': ' + file.url);
+      html.push('<li><a href="' + esc_(file.url) + '">' + esc_(file.name) + '</a></li>');
+    });
+    html.push('</ul></div>');
+  }
+  html.push('</div>');
+  return { subject: subject, text: text.join('\n'), html: html.join('') };
+}
+
+function setWeight_(weight) {
+  if (weight === null || weight === undefined || weight === '') return 'BW';
+  return isBodyweight_(weight) ? 'BW' : Number(weight);
+}
+
+function fmtNumber_(n) {
+  return String(Math.round(n * 100) / 100).replace('.', ',');
+}
+
+function fmtTime_(seconds) {
+  if (seconds < 60) return seconds + '"';
+  var rest = seconds % 60;
+  return Math.floor(seconds / 60) + "'" + (rest ? ('0' + rest).slice(-2) + '"' : '');
+}
+
+/** "3 × 10 × 30 kg · 8 × BW": equal neighbouring sets are merged. */
+function describeSets_(mode, sets) {
+  var groups = [];
+  sets.forEach(function (set) {
+    var last = groups[groups.length - 1];
+    if (last && last.value === set.value && last.weight === set.weight) last.count += 1;
+    else groups.push({ value: set.value, weight: set.weight, count: 1 });
+  });
+  return groups.map(function (group) {
+    var text = mode === 'time' ? fmtTime_(group.value) : String(group.value);
+    if (group.weight === 'BW') text += ' × BW';
+    else if (group.weight > 0) text += ' × ' + fmtNumber_(group.weight) + ' kg';
+    return (group.count > 1 ? group.count + ' × ' : '') + text;
+  }).join(' · ');
+}
+
+function summarize_(mode, sets) {
+  var top = 0;
+  var total = 0;
+  sets.forEach(function (set) {
+    if (typeof set.weight === 'number') top = Math.max(top, set.weight);
+    total += set.value;
+  });
+  return { mode: mode, top: top, total: total, count: sets.length };
+}
+
+/** Same wording as the page: "▲ +2,5 kg, +2 powt." (empty when nothing changed). */
+function diffText_(before, now) {
+  var items = [{ diff: now.top - before.top, unit: 'kg' }];
+  if (before.mode === now.mode) items.push({ diff: now.total - before.total, unit: now.mode === 'time' ? 's' : 'powt.' });
+  items.push({ diff: now.count - before.count, unit: 'serii' });
+  items = items.filter(function (item) { return Math.round(item.diff * 100) !== 0; });
+  if (!items.length) return '';
+  return (items[0].diff > 0 ? '▲ ' : '▼ ') + items.map(function (item) {
+    return (item.diff > 0 ? '+' : '') + fmtNumber_(item.diff) + ' ' + item.unit;
+  }).join(', ');
+}
+
+function diffHtml_(text) {
+  var color = text.charAt(0) === '▲' ? '#17784a' : '#b83a2e';
+  return '<b style="color:' + color + '">' + esc_(text) + '</b>';
+}
+
+function esc_(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Run once from the editor (select "authorize" and press Run) to grant Drive and Mail access. */
+function authorize() {
+  DriveApp.getRootFolder();
+  MailApp.getRemainingDailyQuota();
+  UrlFetchApp.fetch('https://www.googleapis.com/discovery/v1/apis', { muteHttpExceptions: true });
+  ScriptApp.getOAuthToken();
+}
+
 // ---------- helpers ----------
+
+/** "c2B" -> "C2b"; "" for anything that is not letter + up to two digits + optional variant letter (needs digits). */
+function normalizeCode_(value) {
+  var text = String(value === null || value === undefined ? '' : value).trim();
+  var match = /^([A-Za-z])(\d{0,2})([A-Za-z]?)$/.exec(text);
+  if (!match || (match[3] && !match[2])) return '';
+  return match[1].toUpperCase() + match[2] + match[3].toLowerCase();
+}
+
+/** Section of a code: "C2b" -> "C2" (variants of a section are alternatives); "" when there is no number. */
+function slotOf_(code) {
+  var match = /^([A-Z]\d+)[a-z]?$/.exec(String(code || ''));
+  return match ? match[1] : '';
+}
 
 function isBodyweight_(value) {
   return String(value).trim().toUpperCase() === 'BW';
