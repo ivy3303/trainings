@@ -682,6 +682,10 @@
     swap.setAttribute('aria-label', count > 1
       ? 'Zmień ćwiczenie (' + (card._index + 1) + ' z ' + count + ')'
       : 'Dodaj inne ćwiczenie w tej sekcji');
+    const remove = card.querySelector('.remove-exercise');
+    const label = count > 1 ? 'Usuń to ćwiczenie (zostaje drugie)' : 'Pomiń to ćwiczenie';
+    remove.title = label;
+    remove.setAttribute('aria-label', label);
   }
 
   // Next alternative of this section; with none, a blank tile for a new exercise.
@@ -759,7 +763,20 @@
       '<button type="button" class="link-btn note-toggle">+ Uwaga do ćwiczenia</button>' +
       '<div class="note-field hidden"><input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>';
 
+    // With alternatives the ✕ drops only the exercise on screen; the last one takes the whole tile.
     card.querySelector('.remove-exercise').addEventListener('click', () => {
+      const variants = card._variants;
+      if (variants.length > 1) {
+        variants.splice(card._index, 1);
+        card._index = Math.min(card._index, variants.length - 1);
+        loadVariant(card, variants[card._index]);
+        refresh();
+        animate(card.querySelector('.exercise-head'), [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
+        ['.groups', '.prev', '.segmented', '.sets', '.set-actions'].forEach((selector, i) => {
+          animate(card.querySelector(selector), [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'none' }], { duration: 340, delay: i * 30 });
+        });
+        return;
+      }
       card.remove();
       refresh();
     });
@@ -926,14 +943,12 @@
     const validSets = current.sets.filter((s) => !Number.isNaN(s.value));
     if (validSets.length) {
       const parts = diffParts(summarize(previous.mode, previousSets(previous)), summarize(current.mode, validSets));
-      const result = document.createElement('span');
-      if (!parts.length) {
-        result.textContent = ' · bez zmian';
-      } else {
+      if (parts.length) {
+        const result = document.createElement('span');
         result.className = parts[0].diff > 0 ? 'up' : 'down';
         result.textContent = ' ' + (parts[0].diff > 0 ? '▲ ' : '▼ ') + parts.map((p) => (p.diff > 0 ? '+' : '') + formatNumber(p.diff) + ' ' + p.unit).join(', ');
+        hint.appendChild(result);
       }
-      hint.appendChild(result);
     }
     if (parsedNote.general.length) {
       hint.appendChild(document.createElement('br'));
