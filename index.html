@@ -413,7 +413,7 @@
   /* error bar */
   .notice.err { font-weight:600; border:1px solid rgba(255,138,128,.55); }
   /* the error bar follows the page so the reason stays readable next to the field it points at */
-  .notice.err.show { position:sticky; top:8px; z-index:60; box-shadow:0 6px 22px rgba(0,0,0,.45); }
+  .notice.err.show, .notice.warn.show { position:sticky; top:8px; z-index:60; box-shadow:0 6px 22px rgba(0,0,0,.45); }
   input.invalid, select.invalid, textarea.invalid { border-color:var(--red) !important; box-shadow:0 0 0 3px rgba(240,116,108,.45) !important; }
   .media-item.error.invalid, #mediaList.invalid { outline:2px solid var(--red); outline-offset:3px; border-radius:14px; }
   /* training picker: round chevron button set in from the edge */
@@ -945,8 +945,46 @@
   function cardCode(card) {
     const group = card.dataset.group || '';
     if (!group) return '';
-    const rest = card.querySelector('.code-input').value.trim().toLowerCase();
+    let rest = card.querySelector('.code-input').value.trim().toLowerCase();
+    if (/^[a-z]$/.test(rest) && slotDigits(card)) rest = slotDigits(card) + rest; // just "b" in section 1 = "1b"
     return /^\d{1,2}[a-z]?$/.test(rest) ? group + rest : group;
+  }
+
+  const slotDigits = (card) => { const m = /^[A-Z](\d+)/.exec(card._slot || ''); return m ? m[1] : ''; };
+  // A1 is variant a, A1a the same
+  const normCode = (code) => (/^[A-Z]\d+$/.test(code) ? code + 'a' : code);
+  const otherCodes = (card) => card._variants.filter((v, i) => i !== card._index && v.code).map((v) => normCode(v.code));
+  function codeConflict(card) {
+    const code = cardCode(card);
+    return card._variants.length > 1 && /^[A-Z]\d+[a-z]?$/.test(code) && otherCodes(card).includes(normCode(code));
+  }
+  // The first letter of this section that no other alternative uses.
+  function freeCode(card) {
+    const slot = slotOf(cardCode(card)) || card._slot;
+    const used = otherCodes(card);
+    for (let i = 0; i < 26; i += 1) {
+      const code = slot + String.fromCharCode(97 + i);
+      if (!used.includes(code)) return code;
+    }
+    return '';
+  }
+  // The variant letter is filled in by itself and stays editable, but never equals another alternative's.
+  function fixCodeInput(card) {
+    const input = card.querySelector('.code-input');
+    const raw = input.value.trim().toLowerCase();
+    if (!raw) return;
+    if (/^[a-z]$/.test(raw) && slotDigits(card)) input.value = slotDigits(card) + raw;
+    input.classList.remove('invalid');
+    if (!codeConflict(card)) return;
+    const taken = cardCode(card);
+    const free = freeCode(card);
+    if (!free) return;
+    input.value = free.slice(1);
+    const message = 'Wariant ' + taken + ' jest już w tej sekcji — ustawiono ' + free + '.';
+    showStatus('warn', message);
+    setTimeout(() => {
+      if ($('status').textContent === message && $('status').classList.contains('warn')) $('status').className = 'notice';
+    }, 5000);
   }
 
   // A1 is variant a, A1a the same; the next free letter follows the highest one in use.
@@ -994,6 +1032,7 @@
   }
 
   function updateSwap(card) {
+    card.querySelector('.code-input').placeholder = slotDigits(card) ? 'a/b' : '1b';
     const count = card._variants.length;
     const badge = card.querySelector('.swap-count');
     badge.textContent = count > 1 ? (card._index + 1) + '/' + count : '';
@@ -1012,10 +1051,14 @@
   // Next alternative of this section; with none, a blank tile for a new exercise.
   function swapVariant(card) {
     const variants = card._variants;
+    fixCodeInput(card);
     variants[card._index] = snapshot(card);
     if (variants.length === 1) {
       if (!variants[0].name) return;
+      card._slot = card._slot || slotOf(variants[0].code);
       const slot = card._slot;
+      // two alternatives are 1a and 1b: the first one gets its letter now
+      if (slot && /^[A-Z]\d+$/.test(variants[0].code)) { variants[0].code += 'a'; card._autoA = true; }
       variants.push({
         name: '', mode: 'reps', note: '', sets: [], fromForm: true,
         code: slot ? nextVariantCode(slot, variants) : (variants[0].code || '')
@@ -1040,6 +1083,7 @@
     card.querySelector('.name').value = (data && data.name) || '';
     const { group, rest } = splitCode(data && data.code);
     card.querySelector('.code-input').value = rest;
+    card.querySelector('.code-input').classList.remove('invalid');
     applyGroup(card, group);
     applyMode(card);
 
@@ -1056,7 +1100,11 @@
   }
 
   function createExercise(variants, startIndex) {
-    const list = variants && variants.length ? variants.slice() : [null];
+    let list = variants && variants.length ? variants.slice() : [null];
+    // several exercises in one section are 1a, 1b …: a code without a letter counts as "a"
+    if (list.length > 1) {
+      list = list.map((v) => (v && /^[A-Z]\d+$/.test(v.code || '') ? Object.assign({}, v, { code: v.code + 'a' }) : v));
+    }
     const card = document.createElement('div');
     card.className = 'card exercise';
     card._variants = list;
@@ -1091,6 +1139,10 @@
       if (variants.length > 1) {
         variants.splice(card._index, 1);
         card._index = Math.min(card._index, variants.length - 1);
+        if (variants.length === 1 && card._autoA && /^[A-Z]\d+a$/.test(variants[0].code)) {
+          variants[0].code = variants[0].code.slice(0, -1);
+        }
+        if (variants.length === 1) card._autoA = false;
         loadVariant(card, variants[card._index]);
         refresh();
         animate(card.querySelector('.exercise-head'), [{ opacity: 0, transform: 'translateX(-28px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
@@ -1681,6 +1733,12 @@
       return;
     }
     if (!$('date').value) { showStatus('err', 'Wybierz datę.', $('date')); return; }
+    for (const card of exercisesEl.querySelectorAll('.exercise')) {
+      if (codeConflict(card)) {
+        showStatus('err', 'Wariant ' + cardCode(card) + ' jest już użyty w tej sekcji — wpisz inną literę, np. ' + freeCode(card).slice(1) + '.', card.querySelector('.code-input'));
+        return;
+      }
+    }
     const exercises = collectValid();
     if (!exercises.length) { showStatus('err', 'Dodaj co najmniej jedno ćwiczenie z nazwą i serią (powtórzenia lub czas).', incompleteField()); return; }
 
@@ -1771,7 +1829,13 @@
   form.addEventListener('input', (event) => {
     if (event.target.classList.contains('code-input')) {
       event.target.value = event.target.value.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+      event.target.classList.toggle('invalid', codeConflict(event.target.closest('.exercise')));
     }
+    refresh();
+  });
+  form.addEventListener('change', (event) => {
+    if (!event.target.classList.contains('code-input')) return;
+    fixCodeInput(event.target.closest('.exercise'));
     refresh();
   });
 
