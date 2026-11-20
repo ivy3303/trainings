@@ -12,7 +12,7 @@
  * variant letter, e.g. A1, C2a, C2b. Variants of one section (C2a / C2b) are alternatives:
  * the form shows one tile per section and lets you switch between its variants.
  *
- * How the day went (energy, sleep, food; 1-5) is kept in three extra rows at the bottom,
+ * How the day went (energy, sleep, food; 1-3) is kept in three extra rows at the bottom,
  * marked "Stan" in the Blok column, with a value in the reps column of the session's date.
  *
  * Exercises and sets are rows; every saved session adds two columns on the right
@@ -28,7 +28,7 @@
  * POST (JSON as text/plain)
  *   save a session:
  *   { training, create, date: "YYYY-MM-DD", notes,
- *     wellness: { energy, sleep, food } (each 1-5, all optional),
+ *     wellness: { energy, sleep, food } (each 1-3, all optional),
  *     exercises: [{ name, mode: "reps" | "time", note, code (e.g. "A1", "C2b"; optional),
  *                   sets: [{ reps, seconds, weight }] }],
  *     emails: ["a@b.pl"], media: [{ id }], pin }
@@ -47,7 +47,7 @@
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 6;
+var VERSION = 7;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
 var HEADER_ROWS = 2;
 var FIRST_SESSION_COL = 4;
@@ -59,12 +59,12 @@ var COLOR_SUBHEADER = '#e4e9f2';
 var MEDIA_FOLDER = 'Treningi – media';
 var WELLNESS_BLOCK = 'Stan';
 var WELLNESS = [
-  { key: 'energy', label: 'Energia (1–5)', mail: 'energia' },
-  { key: 'sleep', label: 'Sen (1–5)', mail: 'sen' },
-  { key: 'food', label: 'Jedzenie (1–5)', mail: 'jedzenie' }
+  { key: 'energy', label: 'Energia (1–3)', mail: 'energia' },
+  { key: 'sleep', label: 'Sen (1–3)', mail: 'sen' },
+  { key: 'food', label: 'Jedzenie (1–3)', mail: 'jedzenie' }
 ];
-// 1 (worst) .. 5 (best)
-var WELLNESS_COLORS = ['#f7c9c5', '#fbd9b8', '#f8edb0', '#d9efc8', '#c8ecd3'];
+// 1 (worst) .. 3 (best)
+var WELLNESS_COLORS = ['#f7c9c5', '#f8edb0', '#c8ecd3'];
 var MAX_EMAILS = 5;
 var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
@@ -287,8 +287,8 @@ function validate_(data) {
     if (typeof data.wellness !== 'object') throw new Error('Nieprawidłowe samopoczucie.');
     WELLNESS.forEach(function (item) {
       var value = data.wellness[item.key];
-      if (value !== undefined && value !== null && !(value === Math.round(value) && value >= 1 && value <= 5)) {
-        throw new Error('Samopoczucie: wartość ' + item.mail + ' musi być od 1 do 5.');
+      if (value !== undefined && value !== null && !(value === Math.round(value) && value >= 1 && value <= 3)) {
+        throw new Error('Samopoczucie: wartość ' + item.mail + ' musi być od 1 do 3.');
       }
     });
   }
@@ -643,7 +643,7 @@ function buildSummary_(data, sheetName, before, files) {
   }
 
   var mood = WELLNESS.filter(function (item) { return data.wellness && data.wellness[item.key]; })
-    .map(function (item) { return item.mail + ' ' + data.wellness[item.key] + '/5'; });
+    .map(function (item) { return item.mail + ' ' + data.wellness[item.key] + '/3'; });
   if (mood.length) {
     text.push('Samopoczucie: ' + mood.join(' · '), '');
     html.push('<p style="margin:0 0 14px">Samopoczucie: <b>' + esc_(mood.join(' · ')) + '</b></p>');

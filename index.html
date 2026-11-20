@@ -227,14 +227,15 @@
   .mood-head { display: flex; justify-content: space-between; align-items: baseline; margin: 0 2px 4px; }
   .mood-label { font-size: 0.95rem; font-weight: 700; }
   .mood-word { font-size: 0.85rem; color: var(--muted); }
-  .mood-scale { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+  .mood-scale { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
   .mood-scale button { height: 48px; padding: 0; display: grid; place-items: center; background: var(--field); border: 1px solid var(--line); color: var(--muted); }
   .mood-scale svg { height: 26px; width: auto; max-width: 80%; display: block; }
   .mood-scale button.on { background: var(--mc); border-color: var(--mc); color: #1d2228; }
 
   /* e-mail and media */
   .extras .hint { margin-top: 6px; }
-  .pick-media { width: 100%; height: 48px; background: var(--field); border: 1.5px dashed #56698a; color: var(--blue); font-weight: 700; }
+  .pick-media { width: 100%; height: 52px; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--field); border: 1.5px dashed #56698a; color: var(--blue); font-weight: 700; }
+  .pick-media svg { width: 26px; height: 26px; flex: none; }
   .media-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
   .media-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 12px; }
   .media-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
@@ -306,11 +307,6 @@
         <label for="newName">Nazwa nowego treningu (nazwa zakładki w arkuszu)</label>
         <input id="newName" type="text" placeholder="np. FBW A, Push, Nogi">
       </div>
-      <button type="button" class="link-btn" id="showNotes">+ Notatka do całego treningu</button>
-      <div id="notesBox" class="hidden">
-        <label for="notes">Notatka do całego treningu</label>
-        <textarea id="notes" placeholder="Samopoczucie, ogólne wrażenia, plan na następny raz…"></textarea>
-      </div>
       <p class="hint" id="lastInfo"></p>
     </div>
 
@@ -329,7 +325,7 @@
       <input id="emails" type="text" inputmode="email" autocapitalize="off" placeholder="adres@example.com, drugi@example.com">
       <p class="hint">Wiele adresów oddziel przecinkami. Adresy zostają zapamiętane na tym urządzeniu; puste pole = nic nie wysyłam.</p>
       <div class="field-title" style="margin-top:14px">Zdjęcia i filmy</div>
-      <button type="button" class="pick-media" id="pickMedia">+ Dodaj zdjęcia lub filmy</button>
+      <button type="button" class="pick-media" id="pickMedia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13.5" r="3.5"/></svg><span>Dodaj zdjęcia lub filmy</span></button>
       <input type="file" id="media" accept="image/*,video/*" multiple hidden>
       <ul class="media-list" id="mediaList"></ul>
       <div id="pinBox" class="hidden">
@@ -337,6 +333,11 @@
         <input id="pin" type="password" autocomplete="off" placeholder="PIN ze skryptu Google">
         <p class="hint">Ten sam, który jest w skrypcie jako właściwość PIN. Zapamiętuję go na tym urządzeniu.</p>
       </div>
+    </div>
+
+    <div class="card">
+      <label for="notes">Notatka do całego treningu</label>
+      <textarea id="notes" placeholder="Ogólne wrażenia, plan na następny raz…"></textarea>
     </div>
 
     <div class="bar">
@@ -352,25 +353,25 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 6;
+  const EXPECTED_SCRIPT_VERSION = 7;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
   const GROUP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f4a3b8' };
 
-  // How the day went, 1 (worst) to 5 (best); every scale is optional.
+  // How the day went, 1 (worst) to 3 (best); every scale is optional.
   // Energy is a battery, sleep a moon filling up, food a plate with slices.
   const ICONS = {
     battery(n) {
       let bars = '';
-      for (let i = 0; i < 5; i++) {
-        bars += '<rect x="' + (3.6 + i * 4.5) + '" y="5.6" width="3.5" height="8.8" rx="0.8" fill="currentColor" opacity="' + (n > i ? 1 : 0.2) + '"/>';
+      for (let i = 0; i < 3; i++) {
+        bars += '<rect x="' + (4 + i * 7.6) + '" y="5.6" width="6" height="8.8" rx="1" fill="currentColor" opacity="' + (n > i ? 1 : 0.2) + '"/>';
       }
       return '<svg viewBox="0 0 32 20" aria-hidden="true"><rect x="1" y="3" width="26" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/>' +
         '<rect x="28.2" y="7" width="3" height="6" rx="1" fill="currentColor"/>' + bars + '</svg>';
     },
     moon(n) {
-      const phase = (n - 1) / 4; // 0 new moon .. 1 full moon
+      const phase = [0.25, 0.5, 1][n - 1]; // crescent, half, full moon
       const rx = Math.abs(1 - 2 * phase) * 9;
       let lit = '';
       if (phase === 1) lit = '<circle cx="12" cy="12" r="9" fill="currentColor"/>';
@@ -380,20 +381,20 @@
     plate(n) {
       let slices = '';
       const point = (r, deg) => (12 + r * Math.cos(deg * Math.PI / 180)).toFixed(2) + ' ' + (12 + r * Math.sin(deg * Math.PI / 180)).toFixed(2);
-      for (let i = 0; i < 5; i++) {
-        const from = -90 + i * 72 + 3;
-        const to = -90 + (i + 1) * 72 - 3;
+      for (let i = 0; i < 3; i++) {
+        const from = -90 + i * 120 + 4;
+        const to = -90 + (i + 1) * 120 - 4;
         slices += '<path d="M' + point(10.5, from) + 'A10.5 10.5 0 0 1 ' + point(10.5, to) + 'L' + point(4.5, to) + 'A4.5 4.5 0 0 0 ' + point(4.5, from) + 'Z" fill="currentColor" opacity="' + (n > i ? 1 : 0.2) + '"/>';
       }
       return '<svg viewBox="0 0 24 24" aria-hidden="true">' + slices + '</svg>';
     }
   };
   const MOOD = [
-    { key: 'energy', label: 'Energia', icon: 'battery', words: ['Zero sił', 'Mało sił', 'Średnio', 'Dobrze', 'Pełna energia'] },
-    { key: 'sleep', label: 'Sen', icon: 'moon', words: ['Prawie wcale', 'Słabo', 'Średnio', 'Dobrze', 'Super'] },
-    { key: 'food', label: 'Jedzenie', icon: 'plate', words: ['Prawie nic', 'Kiepsko', 'Średnio', 'Dobrze', 'Idealnie'] }
+    { key: 'energy', label: 'Energia', icon: 'battery', words: ['Mało sił', 'Średnio', 'Pełna energia'] },
+    { key: 'sleep', label: 'Sen', icon: 'moon', words: ['Słabo', 'Średnio', 'Dobrze'] },
+    { key: 'food', label: 'Jedzenie', icon: 'plate', words: ['Kiepsko', 'Średnio', 'Dobrze'] }
   ];
-  const MOOD_COLORS = ['#f0746c', '#f6a66c', '#f1df8e', '#a8dcaa', '#4fd09a'];
+  const MOOD_COLORS = ['#f0746c', '#f1df8e', '#4fd09a'];
   let wellness = {};
 
   const NEW_VALUE = '__new__';
@@ -988,7 +989,7 @@
     $('moodList').innerHTML = MOOD.map((item) =>
       '<div class="mood-row" data-key="' + item.key + '">' +
         '<div class="mood-head"><span class="mood-label">' + item.label + '</span><span class="mood-word"></span></div>' +
-        '<div class="mood-scale" role="group" aria-label="' + item.label + ' od 1 do 5">' +
+        '<div class="mood-scale" role="group" aria-label="' + item.label + ' od 1 do 3">' +
           item.words.map((word, i) => '<button type="button" data-value="' + (i + 1) + '" style="--mc:' + MOOD_COLORS[i] + '" aria-label="' + (i + 1) + ' – ' + word + '">' + ICONS[item.icon](i + 1) + '</button>').join('') +
         '</div>' +
       '</div>').join('');
@@ -1273,8 +1274,6 @@
       renderTrainingSelect(result.sheet);
       try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
       $('notes').value = '';
-      $('notesBox').classList.add('hidden');
-      $('showNotes').classList.remove('hidden');
       $('newName').value = '';
       $('date').value = today();
       renderExercises();
@@ -1311,12 +1310,6 @@
       event.target.value = event.target.value.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
     }
     refresh();
-  });
-
-  $('showNotes').addEventListener('click', (event) => {
-    event.currentTarget.classList.add('hidden');
-    $('notesBox').classList.remove('hidden');
-    $('notes').focus();
   });
 
   exercisesEl.addEventListener('click', (event) => {
