@@ -708,6 +708,29 @@
     return first || null;
   }
 
+  // An exercise that is started but not finished must not vanish silently from the save: name it, or fill in / remove its sets.
+  function findIncomplete() {
+    for (const card of exercisesEl.querySelectorAll('.exercise')) {
+      const nameInput = card.querySelector('.name');
+      const name = nameInput.value.trim();
+      const inputs = [...card.querySelectorAll('.set .main, .set .weight')];
+      const touched = card.dataset.group || card.querySelector('.note-input').value.trim() || inputs.some((input) => input.value !== '');
+      if (!name) {
+        if (touched) return { field: nameInput, message: 'Ćwiczenie' + (cardCode(card) ? ' ' + cardCode(card) : '') + ' nie ma nazwy — dopisz ją albo pomiń ćwiczenie przyciskiem ✕.' };
+        continue;
+      }
+      const sets = [...card.querySelectorAll('.set')];
+      for (let i = 0; i < sets.length; i += 1) {
+        const main = sets[i].querySelector('.main');
+        if (main.value === '') {
+          const what = modeOf(card) === 'time' ? 'czas' : 'powtórzenia';
+          return { field: main, message: '„' + name + '”: uzupełnij ' + what + ' w serii ' + (i + 1) + ', usuń tę serię albo pomiń ćwiczenie przyciskiem ✕.' };
+        }
+      }
+    }
+    return null;
+  }
+
   // The script names the exercise in its messages ('… w ćwiczeniu "Martwy ciąg".').
   function fieldForServerError(message) {
     const text = String(message || '');
@@ -1262,17 +1285,16 @@
       refresh();
     });
     card.querySelector('.add-set').addEventListener('click', () => {
-      // A new set starts with the values of the previous one, so only changes need tapping.
+      // A new set keeps the kilograms of the previous one, the repetitions start empty.
       const rows = card.querySelectorAll('.set');
       const last = rows[rows.length - 1];
       let row;
       if (last) {
         const timed = modeOf(card) === 'time';
-        const main = last.querySelector('.main').value;
         const weight = last.dataset.bw ? 'BW' : last.querySelector('.weight').value;
         row = createSet(card, {
-          reps: timed ? 0 : (main === '' ? null : Number(main)),
-          seconds: timed ? (main === '' ? null : Number(main)) : 0,
+          reps: timed ? 0 : null,
+          seconds: timed ? null : 0,
           weight: weight === 'BW' ? 'BW' : (weight === '' ? null : Number(weight))
         });
       } else {
@@ -1850,6 +1872,8 @@
     exercisesEl.querySelectorAll('.exercise').forEach((card) => {
       if (card.dataset.group && !card.querySelector('.code-input').value.trim() && readCard(card).name) autoNumber(card);
     });
+    const incomplete = findIncomplete();
+    if (incomplete) { showStatus('err', incomplete.message, incomplete.field); return; }
     const duplicate = findDuplicateCode();
     if (duplicate) { showStatus('err', duplicate.message, duplicate.field); return; }
     const exercises = collectValid();
@@ -2027,7 +2051,7 @@
     }
   });
 
-  // Holding "−" next to the reps (or seconds) sets them to 0; a ring fills up while the finger stays down.
+  // Holding "−" next to the reps (seconds) or the kilograms sets the value to 0; a ring fills up while the finger stays down.
   const HOLD_MS = 600;
   let holdTimer = null;
   function stopHold(step) {
@@ -2037,7 +2061,7 @@
   }
   exercisesEl.addEventListener('pointerdown', (event) => {
     const step = event.target.closest('.step[data-dir="-1"]');
-    const input = step && step.parentElement.querySelector('input.main');
+    const input = step && step.parentElement.querySelector('input.main, input.weight');
     if (!input || input.disabled) return;
     stopHold(step);
     step.classList.add('holding');
