@@ -364,6 +364,8 @@
   .done-check svg { width:40px; height:40px; }
   .done-inner h2 { margin:0; font-size:1.7rem; font-weight:800; color:#8ff0c4; }
   .done-info { margin:6px 0 0; font-size:0.95rem; color:var(--muted); }
+  .done-sheet { display:inline-block; margin-top:14px; padding:9px 18px; border-radius:999px; font-size:0.95rem; font-weight:700; text-decoration:none;
+    color:var(--green); background:rgba(79,208,154,.10); border:1px solid rgba(79,208,154,.45); }
   .done-warn { margin:12px 0 0; padding:10px 12px; border-radius:18px; background:var(--red-soft); color:#ffb4ae; font-size:0.9rem; text-align:left; }
   .done-summary { zoom:0.86; margin-top:18px; text-align:left; }
   .done-summary a { text-decoration:none; }
@@ -568,6 +570,7 @@
     <h2 id="doneTitle">Zapisano!</h2>
     <p id="doneInfo" class="done-info"></p>
     <p id="doneWarn" class="done-warn hidden"></p>
+    <a id="doneSheet" class="done-sheet" target="_blank" rel="noopener">Otwórz arkusz</a>
     <div id="doneSummary" class="done-summary"></div>
   </div>
   <div class="bar">
@@ -579,6 +582,7 @@
 
 <script>
   // Address of the Google Apps Script web app (see apps-script/Code.gs).
+  const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1Hwfz0XQFqmaOKWfd4nbc38QO2L1jyTxssQOAk7KdVw0/edit';
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
@@ -762,6 +766,7 @@
     const info = ['Zakładka „' + result.sheet + '”'];
     if (result.emailed) info.push('podsumowanie wysłane na ' + result.emailed + ' adr.');
     $('doneInfo').textContent = info.join(' · ');
+    $('doneSheet').href = typeof result.sheetUrl === 'string' && result.sheetUrl.indexOf('https://docs.google.com/') === 0 ? result.sheetUrl : SHEET_URL;
     const warn = $('doneWarn');
     warn.textContent = result.emailError ? 'Trening jest zapisany, ale maila nie udało się wysłać: ' + result.emailError : '';
     warn.classList.toggle('hidden', !result.emailError);

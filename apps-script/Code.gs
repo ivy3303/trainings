@@ -147,6 +147,7 @@ function saveSession_(data) {
     var summary = null;
     try { summary = buildSummary_(data, sheet.getName(), before, files); } catch (error) { summary = null; }
     var result = { ok: true, sheet: sheet.getName(), media: files.length, summary: summary ? summary.inner : '' };
+    try { result.sheetUrl = spreadsheet.getUrl() + '#gid=' + sheet.getSheetId(); } catch (error) { /* the page falls back to the plain sheet link */ }
     if (emails.length) {
       try {
         if (!summary) throw new Error('Nie udało się zbudować podsumowania.');
