@@ -4,6 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#0b0f1f">
+<script>
+  // Chrome's "desktop site" setting makes a phone lay the page out about 980 px wide, which shrinks everything.
+  // This scales the page back so the form keeps its phone layout, also in the installed app.
+  (function () {
+    function fit() {
+      const root = document.documentElement;
+      root.style.zoom = '';
+      const phone = screen.width;
+      if (navigator.maxTouchPoints > 0 && phone <= 600 && window.innerWidth > phone * 1.3) {
+        root.style.zoom = String(window.innerWidth / phone);
+      }
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    window.addEventListener('orientationchange', fit);
+  })();
+</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
