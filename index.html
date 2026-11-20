@@ -132,6 +132,7 @@
   .prev:empty { display: none; }
   .prev .up { color: var(--green); font-weight: 700; }
   .prev .down { color: var(--red); font-weight: 700; }
+  .prev .flat { color: var(--muted); font-weight: 700; }
   .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-bottom: 10px; padding: 4px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; }
   .segmented button { height: 38px; background: transparent; color: var(--muted); }
   .segmented button.on { background: var(--blue-soft); color: #cfe0ff; font-weight: 700; }
@@ -331,8 +332,8 @@
   .check:active .box { transform:scale(.92); }
   #mailBox, #pinBox { margin-top:14px; }
   /* after saving: confirmation page with the summary */
-  body.locked { overflow:hidden; }
-  .done-view { position:fixed; inset:0; z-index:100; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:28px 14px 120px; background:
+  body.locked { overflow:hidden; overscroll-behavior:none; }
+  .done-view { position:fixed; inset:0; z-index:100; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:28px 14px 120px; background:
     radial-gradient(60% 38% at 8% 0%, rgba(124,92,255,.55), transparent 62%),
     radial-gradient(50% 36% at 100% 22%, rgba(0,205,210,.32), transparent 62%),
     radial-gradient(70% 45% at 40% 100%, rgba(255,92,150,.34), transparent 62%), #0b0f1f; }
@@ -345,6 +346,7 @@
   .done-warn { margin:12px 0 0; padding:10px 12px; border-radius:18px; background:var(--red-soft); color:#ffb4ae; font-size:0.9rem; text-align:left; }
   .done-summary { zoom:0.86; margin-top:18px; text-align:left; }
   .done-summary a { text-decoration:none; }
+  .prev .up, .prev .down, .prev .flat { white-space:nowrap; }
   .done-view .bar { position:fixed; }
   .done-check.pop-in { animation:donePop .55s cubic-bezier(.2,1.4,.4,1) both; }
   @keyframes donePop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
@@ -605,6 +607,8 @@
   }
 
   function closeDone() {
+    // The confirmation page said it already: the green bar would only repeat it.
+    if ($('status').classList.contains('ok')) $('status').className = 'notice';
     $('doneView').classList.add('hidden');
     document.body.classList.remove('locked');
     window.scrollTo({ top: 0 });
@@ -1087,8 +1091,12 @@
       const now = input.value === '' ? NaN : Number(input.value);
       const wasMore = input.classList.contains('more');
       const wasLess = input.classList.contains('less');
+      // More kilograms for fewer reps is progress, not a step back, so the reps tile stays neutral then.
+      const kgBefore = comparable && previous.sets[i] ? previous.sets[i].weight : null;
+      const kgNow = row.querySelector('.weight').value;
+      const heavier = typeof kgBefore === 'number' && kgNow !== '' && Number(kgNow) > kgBefore;
       input.classList.toggle('more', Boolean(before) && now > before);
-      input.classList.toggle('less', Boolean(before) && now < before);
+      input.classList.toggle('less', Boolean(before) && now < before && !heavier);
       if (!wasMore && input.classList.contains('more')) glow(input, '79, 208, 154');
       if (!wasLess && input.classList.contains('less')) glow(input, '240, 116, 108');
     });
@@ -1115,12 +1123,15 @@
     const validSets = current.sets.filter((s) => !Number.isNaN(s.value));
     if (validSets.length) {
       const parts = diffParts(summarize(previous.mode, previousSets(previous)), summarize(current.mode, validSets));
-      if (parts.length) {
+      // Every change has its own colour: more is green (▲), less is red (▼), e.g. "▲ +2,5 kg  ▼ -1 powt.".
+      // Fewer reps or sets while the weight went up is progress, so it is only shown in grey.
+      const heavier = parts.length && parts[0].unit === 'kg' && parts[0].diff > 0;
+      parts.forEach((part) => {
         const result = document.createElement('span');
-        result.className = parts[0].diff > 0 ? 'up' : 'down';
-        result.textContent = ' ' + (parts[0].diff > 0 ? '▲ ' : '▼ ') + parts.map((p) => (p.diff > 0 ? '+' : '') + formatNumber(p.diff) + ' ' + p.unit).join(', ');
+        result.className = part.diff > 0 ? 'up' : (heavier && part.unit !== 'kg' ? 'flat' : 'down');
+        result.textContent = ' ' + (part.diff > 0 ? '▲ +' : '▼ ') + formatNumber(part.diff) + ' ' + part.unit;
         hint.appendChild(result);
-      }
+      });
     }
     if (parsedNote.general.length) {
       hint.appendChild(document.createElement('br'));

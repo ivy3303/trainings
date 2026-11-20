@@ -908,21 +908,28 @@ function summarize_(mode, sets) {
   return { mode: mode, top: top, total: total, count: sets.length };
 }
 
-/** Same wording as the page: "▲ +2,5 kg, +2 powt." (empty when nothing changed). */
+/** Same wording as the page: "▲ +2,5 kg, ▼ -1 powt." - every change has its own arrow (empty when nothing changed). */
 function diffText_(before, now) {
   var items = [{ diff: now.top - before.top, unit: 'kg' }];
   if (before.mode === now.mode) items.push({ diff: now.total - before.total, unit: now.mode === 'time' ? 's' : 'powt.' });
   items.push({ diff: now.count - before.count, unit: 'serii' });
-  items = items.filter(function (item) { return Math.round(item.diff * 100) !== 0; });
-  if (!items.length) return '';
-  return (items[0].diff > 0 ? '▲ ' : '▼ ') + items.map(function (item) {
-    return (item.diff > 0 ? '+' : '') + fmtNumber_(item.diff) + ' ' + item.unit;
+  return items.filter(function (item) { return Math.round(item.diff * 100) !== 0; }).map(function (item) {
+    return (item.diff > 0 ? '▲ +' : '▼ ') + fmtNumber_(item.diff) + ' ' + item.unit;
   }).join(', ');
 }
 
+/** One pill per change: green for more, red for less; fewer reps or sets with more kilograms is progress, so it is grey. */
 function diffHtml_(text) {
-  var up = text.charAt(0) === '▲';
-  return '<span style="display:inline-block;margin-left:2px;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:700;background:' + (up ? '#17503f' : '#5a2a35') + ';background:' + (up ? 'rgba(40,200,140,.22)' : 'rgba(255,90,90,.22)') + ';color:' + (up ? '#5ef0b0' : '#ff8a80') + '">' + esc_(text) + '</span>';
+  var parts = text.split(', ');
+  var heavier = /^▲ \+[\d,.]+ kg$/.test(parts[0]);
+  return parts.map(function (part, i) {
+    var up = part.charAt(0) === '▲';
+    var flat = !up && heavier && i > 0;
+    var bg = up ? 'rgba(40,200,140,.22)' : flat ? 'rgba(160,170,200,.18)' : 'rgba(255,90,90,.22)';
+    var fg = up ? '#5ef0b0' : flat ? '#b8c2dc' : '#ff8a80';
+    var solid = up ? '#17503f' : flat ? '#3a4258' : '#5a2a35';
+    return '<span style="display:inline-block;margin:0 4px 0 2px;padding:1px 10px;border-radius:999px;font-size:12px;font-weight:700;background:' + solid + ';background:' + bg + ';color:' + fg + '">' + esc_(part) + '</span>';
+  }).join('');
 }
 
 function esc_(value) {
