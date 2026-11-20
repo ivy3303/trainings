@@ -52,7 +52,7 @@
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 12;
+var VERSION = 13;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
 var HEADER_ROWS = 3;
 var WELLNESS_ROW = 2;
@@ -140,7 +140,7 @@ function saveSession_(data) {
 
     if (!data.create) checkCodesInSheet_(sheet, timeZone, data.exercises);
     var files = media.length ? mediaFiles_(media) : [];
-    var before = previousByName_(sheet, timeZone);
+    var before = previousByName_(sheet, timeZone, data.create ? '' : data.date);
     appendSession_(sheet, data, timeZone, files);
 
     // The same summary is mailed and shown on the page after saving (summary = the HTML without the mail background).
@@ -296,10 +296,17 @@ function latestExercises_(sheet, layout) {
   return result;
 }
 
-/** Results from before the new session, by lower-case exercise name (for the e-mail comparison). */
-function previousByName_(sheet, timeZone) {
+/**
+ * Results from before the new session, by lower-case exercise name (for the e-mail comparison).
+ * With a date only the sessions of that day or earlier count, so a past date is compared with what came before it.
+ */
+function previousByName_(sheet, timeZone, date) {
   var map = {};
-  latestExercises_(sheet, readLayout_(sheet, timeZone)).forEach(function (exercise) {
+  var layout = readLayout_(sheet, timeZone);
+  if (date) {
+    layout.sessions = layout.sessions.filter(function (session) { return session.date <= date; });
+  }
+  latestExercises_(sheet, layout).forEach(function (exercise) {
     map[exercise.name.toLowerCase()] = exercise;
   });
   return map;
@@ -506,17 +513,33 @@ function appendSession_(sheet, data, timeZone, files) {
     return { exercise: exercise, timed: timed, name: name, rows: rows };
   });
 
-  // 2. The new column pair goes to the right of the last session.
+  // 2. The new column pair goes in chronological order: before the first later date, else to the right of the last session.
   var notesRow = ensureNotesRow_(sheet);
   var layout = readLayout_(sheet, timeZone);
-  var col = Math.max(sheet.getLastColumn(), FIRST_SESSION_COL - 1) + 1;
+  var endCol = Math.max(sheet.getLastColumn(), FIRST_SESSION_COL - 1) + 1;
+  var col = endCol;
+  for (var s = 0; s < layout.sessions.length; s++) {
+    if (layout.sessions[s].date > data.date) { col = layout.sessions[s].col; break; }
+  }
+  var inserted = col < endCol;
+  if (inserted) {
+    sheet.insertColumnsBefore(col, 2);
+    // the new columns copy the look of their neighbour: start from a clean slate
+    var fresh = sheet.getRange(1, col, sheet.getMaxRows(), 2);
+    fresh.breakApart();
+    fresh.clear();
+    fresh.clearNote();
+    sheet.getRange(notesRow, 1, 1, sheet.getLastColumn())
+      .setBorder(true, null, null, null, null, null, COLOR_NAVY, SpreadsheetApp.BorderStyle.SOLID);
+  }
   var lastRow = Math.max(sheet.getLastRow(), HEADER_ROWS + 1);
   var count = lastRow - HEADER_ROWS;
 
+  var earlier = layout.sessions.filter(function (session) { return session.col < col; });
   var previous = col > FIRST_SESSION_COL
     ? sheet.getRange(HEADER_ROWS + 1, FIRST_SESSION_COL, count, col - FIRST_SESSION_COL).getValues()
     : [];
-  var sessionCols = layout.sessions.map(function (session) { return session.col - FIRST_SESSION_COL; });
+  var sessionCols = earlier.map(function (session) { return session.col - FIRST_SESSION_COL; });
 
   var values = [];
   var formats = [];
@@ -567,8 +590,25 @@ function appendSession_(sheet, data, timeZone, files) {
   sheet.setColumnWidth(col, 90);
   sheet.setColumnWidth(col + 1, 70);
 
+  // The session that now follows the new one is compared with it, so its colours are worked out again.
+  if (inserted) recolorSession_(sheet, col + 2, count);
+
   sortExerciseRows_(sheet, timeZone); // alphabetical by code, whatever order the exercises came in
   formatLeft_(sheet, timeZone);
+}
+
+/** The reps (time) cells of the session at `col` coloured against the sessions to its left (more / less / same). */
+function recolorSession_(sheet, col, count) {
+  var left = sheet.getRange(HEADER_ROWS + 1, FIRST_SESSION_COL, count, col - FIRST_SESSION_COL).getValues();
+  var own = sheet.getRange(HEADER_ROWS + 1, col, count, 1).getValues();
+  var sessionCols = [];
+  for (var c = 0; c < col - FIRST_SESSION_COL; c += 2) sessionCols.push(c);
+  var backgrounds = own.map(function (cells, i) {
+    var value = cells[0];
+    if (value === '' || value === null || isNaN(Number(value))) return [null];
+    return [compareColor_(left[i], sessionCols, Number(value))];
+  });
+  sheet.getRange(HEADER_ROWS + 1, col, count, 1).setBackgrounds(backgrounds);
 }
 
 /** "- foto.jpg [A1]: link" - the exercise code (or name) in brackets when the file belongs to an exercise. */
