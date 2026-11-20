@@ -19,8 +19,6 @@
     --blue-btn: #3b6fd8;    /* main button */
     --blue-btn-edge: #25489a;
     --blue-soft: #2b3f63;
-    --yellow: #f2b705;
-    --yellow-soft: #4a3f14;
     --green: #4fd09a;
     --green-soft: #1f4636;
     --red: #f0746c;
@@ -156,7 +154,7 @@
     border: 1px solid var(--line);
     color: var(--muted);
   }
-  .bw.on { background: var(--yellow); border-color: var(--yellow); color: #1d2228; }
+  .bw.on { background: var(--blue-btn); border-color: var(--blue-btn); color: #fff; }
   .num-field { display: flex; gap: 3px; }
   .num-field input {
     min-width: 0;
@@ -166,7 +164,6 @@
     font-size: 1.25rem;
     font-weight: 700;
   }
-  .num-field input.changed { border-color: var(--yellow); background: var(--yellow-soft); box-shadow: 0 0 0 1px var(--yellow); }
   .num-field input:disabled { background: #22282f; color: var(--muted); }
   .num-field .step {
     flex: 0 0 40px;
@@ -206,7 +203,7 @@
 
   .notice { padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: 0.9rem; display: none; }
   .notice.show { display: block; }
-  .notice.warn { background: var(--yellow-soft); color: #ffe38a; }
+  .notice.warn { background: var(--blue-soft); color: #cfe0ff; }
   .notice.ok { background: var(--green-soft); color: var(--green); }
   .notice.err { background: var(--red-soft); color: #ffb4ae; }
 
@@ -592,15 +589,6 @@
     const hint = card.querySelector('.prev');
     hint.textContent = '';
 
-    const prevSets = previous && previous.mode === current.mode ? previousSets(previous) : null;
-    card.querySelectorAll('.set').forEach((row, i) => {
-      const mainChanged = prevSets && !Number.isNaN(current.sets[i].value) && (!prevSets[i] || current.sets[i].value !== prevSets[i].value);
-      const prevWeight = prevSets && prevSets[i] ? prevSets[i].weight : NaN;
-      const nowWeight = current.sets[i].weight;
-      const weightChanged = prevSets && !Number.isNaN(nowWeight) && !(nowWeight === prevWeight);
-      row.querySelector('.main').classList.toggle('changed', Boolean(mainChanged));
-      row.querySelector('.weight').classList.toggle('changed', Boolean(weightChanged));
-    });
 
     if (!previous) {
       if (!isNewTraining() && current.name) hint.textContent = 'Nowe ćwiczenie w tym treningu — brak wcześniejszych wyników.';
