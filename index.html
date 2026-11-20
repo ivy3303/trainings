@@ -358,8 +358,10 @@
     <div class="card mood">
       <div class="field-title">Samopoczucie</div>
       <div id="moodList"></div>
+      <p class="hint" id="moodPrev"></p>
       <label for="moodNote" style="margin-top:14px">Uwagi do samopoczucia</label>
       <textarea id="moodNote" maxlength="500" placeholder="Szczegóły samopoczucia"></textarea>
+      <p class="hint" id="moodNotePrev"></p>
     </div>
 
     <div id="exercises"></div>
@@ -400,7 +402,7 @@
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
 
   // Must match VERSION in apps-script/Code.gs.
-  const EXPECTED_SCRIPT_VERSION = 10;
+  const EXPECTED_SCRIPT_VERSION = 11;
 
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
@@ -1024,6 +1026,7 @@
     }
     renderingAll = false;
     refresh();
+    loadWellness(training);
   }
 
   function refresh() {
@@ -1054,6 +1057,18 @@
       });
       row.querySelector('.mood-word').textContent = value ? item.words[value - 1] : '';
     });
+  }
+
+  // Starts from the last session's scales (tap to change, tap again to clear); its remark is only shown as a hint.
+  function loadWellness(training) {
+    const last = (training && training.wellness) || {};
+    wellness = {};
+    MOOD.forEach((item) => { if (last[item.key] >= 1 && last[item.key] <= 3) wellness[item.key] = last[item.key]; });
+    $('moodNote').value = '';
+    updateMood();
+    const parts = MOOD.filter((item) => wellness[item.key]).map((item) => item.label.toLowerCase() + ' ' + item.words[wellness[item.key] - 1].toLowerCase());
+    $('moodPrev').textContent = parts.length ? 'Poprzednio (' + training.lastDate + '): ' + parts.join(' · ') + '.' : '';
+    $('moodNotePrev').textContent = last.note ? 'Poprzednia uwaga: ' + last.note : '';
   }
 
   // Scales plus the free-text remark, or nothing when the section was left empty.

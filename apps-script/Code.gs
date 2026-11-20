@@ -49,7 +49,7 @@
  */
 
 // Bumped when the response format or sheet layout changes; index.html checks it to detect an outdated deployment.
-var VERSION = 10;
+var VERSION = 11;
 var LEFT_HEADER = ['Blok', 'Ćwiczenie', 'Seria'];
 var HEADER_ROWS = 3;
 var WELLNESS_ROW = 2;
@@ -165,9 +165,30 @@ function listTrainings_() {
     return {
       name: sheet.getName(),
       lastDate: last ? last.date : '',
-      exercises: last ? latestExercises_(sheet, layout) : []
+      exercises: last ? latestExercises_(sheet, layout) : [],
+      wellness: last ? readWellness_(sheet, last.col) : {}
     };
   });
+}
+
+/**
+ * How the day went in a session: { energy, sleep, food (1-3), note }, read back from the note of the
+ * dots cell ("Energia: Średnio (2/3)" ... "Uwagi: ..."); only what is there.
+ */
+function readWellness_(sheet, col) {
+  var text = String(sheet.getRange(WELLNESS_ROW, col).getNote() || '');
+  var out = {};
+  var cut = text.indexOf('Uwagi: ');
+  var scales = cut >= 0 ? text.slice(0, cut) : text;
+  if (cut >= 0 && text.slice(cut + 7).trim()) out.note = text.slice(cut + 7).trim();
+  scales.split('\n').forEach(function (line) {
+    WELLNESS.forEach(function (item) {
+      if (line.indexOf(item.label + ':') !== 0) return;
+      var match = /\(([123])\/3\)/.exec(line);
+      if (match) out[item.key] = Number(match[1]);
+    });
+  });
+  return out;
 }
 
 /** Rows (one per exercise set) and sessions (one per date column pair) of a training tab. */
