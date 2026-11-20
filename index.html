@@ -350,6 +350,9 @@
   .pair { display:flex; flex-direction:column; min-height:142px; }
   .pair textarea { flex:1; }
   .media-list:empty { display:none; }
+  /* dark dropdown lists with light text (option colours follow the block colours) */
+  select { color-scheme:dark; }
+  select option { background:#171c37; color:#f4f6ff; }
   /* which exercise a photo belongs to */
   .media-ex { margin-top:10px; display:flex; flex-direction:column; align-items:flex-start; gap:5px; }
   .media-ex select { width:auto; max-width:100%; min-width:130px; height:36px; padding:0 34px 0 14px; border-radius:999px; font-size:0.9rem; font-weight:600; color:var(--text); -webkit-appearance:none; appearance:none;
@@ -1262,14 +1265,14 @@
     const out = [];
     exercisesEl.querySelectorAll('.exercise').forEach((card) => {
       const c = readCard(card);
-      if (c.name) out.push({ name: c.name, label: c.code || c.name });
+      if (c.name) out.push({ name: c.name, label: c.code || c.name, group: (c.code || '').charAt(0) });
     });
     return out;
   }
 
   function fillExerciseSelect(select, item) {
     const choices = exerciseChoices();
-    const signature = choices.map((c) => c.label + '|' + c.name).join('\n');
+    const signature = choices.map((c) => c.label + '|' + c.name + '|' + c.group).join('\n');
     if (select.dataset.signature !== signature) {
       select.dataset.signature = signature;
       select.innerHTML = '';
@@ -1281,13 +1284,21 @@
         const option = document.createElement('option');
         option.value = c.name;
         option.textContent = c.label;
+        option.style.color = GROUP_COLORS[c.group] || '';
         select.appendChild(option);
       });
     }
     // An exercise that was renamed or removed meanwhile no longer applies.
     if (item.exercise && !choices.some((c) => c.name === item.exercise)) item.exercise = '';
     select.value = item.exercise;
+    paintExerciseSelect(select, choices);
     select.closest('.media-ex').querySelector('.media-ex-name').textContent = item.exercise;
+  }
+
+  // The closed select shows its exercise in the colour of the exercise's block.
+  function paintExerciseSelect(select, choices) {
+    const picked = (choices || exerciseChoices()).find((c) => c.name === select.value);
+    select.style.color = (picked && GROUP_COLORS[picked.group]) || '';
   }
 
   function buildMediaItem(item) {
@@ -1343,6 +1354,7 @@
     const item = media.find((m) => m.key === select.closest('.media-item').dataset.key);
     if (!item) return;
     item.exercise = select.value;
+    paintExerciseSelect(select);
     select.closest('.media-ex').querySelector('.media-ex-name').textContent = item.exercise;
   });
   ['pointerdown', 'focusin'].forEach((type) => {
