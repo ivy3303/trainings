@@ -24,6 +24,8 @@
  * the exercise remark on the first set's reps cell, the links to photos and videos on the date.
  * The remark on the whole training goes to the UWAGI row at the bottom.
  *
+ * A successful save answers { ok, sheet, media, summary (HTML of the session summary), emailed?, emailError? }.
+ *
  * GET  ?action=list  -> { ok, version, trainings: [{ name, lastDate, exercises }] }
  *                       exercises = every exercise of the training with its most recent results:
  *                       [{ name, code, group, mode, note, date, inLast, sets: [{ reps, seconds, weight }] }]
@@ -39,7 +41,7 @@
  *   mode "reps" uses sets[].reps, mode "time" uses sets[].seconds;
  *   weight is optional: a number (kg), "BW" or empty.
  *   emails -> a summary of the session is mailed from the owner's account (needs pin).
- *   media  -> files already uploaded to the "Treningi – media" Drive folder (see below).
+ *   media  -> files already uploaded to the "trainings" Drive folder (see below).
  *   upload a photo or video to Drive in chunks (all need pin):
  *   { action: "uploadStart", name, mime, size, pin }            -> { ok, uploadId }
  *   { action: "uploadChunk", uploadId, offset, data (base64), pin } -> { ok, done, id?, url? }
@@ -60,7 +62,8 @@ var REPS_FORMAT = '0';
 var WEIGHT_FORMAT = '0.0#';
 var COLOR_NAVY = '#0f2a4a';
 var COLOR_SUBHEADER = '#e4e9f2';
-var MEDIA_FOLDER = 'Treningi – media';
+var MEDIA_FOLDER = 'trainings';
+var OLD_MEDIA_FOLDER = 'Treningi – media'; // where photos went before the folder was renamed
 var NOTES_LABEL = 'UWAGI';
 var COLOR_NOTES = '#f6f7fb';
 var WELLNESS_BLOCK = 'Stan';
@@ -135,14 +138,18 @@ function saveSession_(data) {
     }
 
     var files = media.length ? mediaFiles_(media) : [];
-    var before = emails.length ? previousByName_(sheet, timeZone) : {};
+    var before = previousByName_(sheet, timeZone);
     appendSession_(sheet, data, timeZone, files);
 
-    var result = { ok: true, sheet: sheet.getName(), media: files.length };
+    // The same summary is mailed and shown on the page after saving (summary = the HTML without the mail background).
+    var summary = null;
+    try { summary = buildSummary_(data, sheet.getName(), before, files); } catch (error) { summary = null; }
+    var result = { ok: true, sheet: sheet.getName(), media: files.length, summary: summary ? summary.inner : '' };
     if (emails.length) {
       try {
+        if (!summary) throw new Error('Nie udało się zbudować podsumowania.');
         shareFiles_(files, emails);
-        sendSummary_(data, sheet.getName(), before, files, emails);
+        sendSummary_(summary, emails);
         result.emailed = emails.length;
       } catch (error) {
         result.emailError = message_(error);
@@ -684,14 +691,15 @@ function fileUrl_(id) {
   return 'https://drive.google.com/file/d/' + id + '/view';
 }
 
-/** The uploaded files named by the page, only if they are really inside the media folder. */
+/** The uploaded files named by the page, only if they are really inside a media folder (current or old name). */
 function mediaFiles_(media) {
   var folderId = mediaFolder_().getId();
   return media.map(function (item) {
     var file = DriveApp.getFileById(String(item.id));
     var parents = file.getParents();
     while (parents.hasNext()) {
-      if (parents.next().getId() === folderId) {
+      var parent = parents.next();
+      if (parent.getId() === folderId || parent.getName() === MEDIA_FOLDER || parent.getName() === OLD_MEDIA_FOLDER) {
         return { id: file.getId(), name: file.getName(), url: fileUrl_(file.getId()), file: file, exercise: String(item.exercise || '').trim().slice(0, 200) };
       }
     }
@@ -710,8 +718,7 @@ function shareFiles_(files, emails) {
 
 // ---------- e-mail summary ----------
 
-function sendSummary_(data, sheetName, before, files, emails) {
-  var summary = buildSummary_(data, sheetName, before, files);
+function sendSummary_(summary, emails) {
   MailApp.sendEmail({
     to: emails.join(','),
     subject: summary.subject,
@@ -786,7 +793,7 @@ function buildSummary_(data, sheetName, before, files) {
   var count = data.exercises.length;
   var counted = count + (count === 1 ? ' ćwiczenie' : count > 1 && count < 5 ? ' ćwiczenia' : ' ćwiczeń');
   var pill = 'display:inline-block;padding:5px 14px;border-radius:999px;font-size:13px;line-height:18px;font-weight:700;';
-  var html = '<div style="background:#0b0f1f;background-image:radial-gradient(60% 38% at 8% 0%,rgba(124,92,255,.55),transparent 62%),radial-gradient(50% 36% at 100% 22%,rgba(0,205,210,.32),transparent 62%),radial-gradient(70% 45% at 40% 100%,rgba(255,92,150,.34),transparent 62%);padding:22px 10px;font-family:\'DM Sans\',Arial,Helvetica,sans-serif;color:#f4f6ff">' +
+  var inner =
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width:560px;margin:0 auto">' +
     '<tr><td style="padding:6px 8px 18px">' +
       '<div style="font-size:14px;color:#aab4d8">Treningi</div>' +
@@ -797,9 +804,10 @@ function buildSummary_(data, sheetName, before, files) {
       '</div>' +
     '</td></tr>' +
     '<tr><td>' + blocks.join('') + '</td></tr>' +
-    '<tr><td align="center" style="padding:8px 0 2px;font-size:12px;color:#8590bd">Wysłano z formularza Treningi</td></tr>' +
-    '</table></div>';
-  return { subject: subject, text: text.join('\n'), html: html };
+    '</table>';
+  var html = '<div style="background:#0b0f1f;background-image:radial-gradient(60% 38% at 8% 0%,rgba(124,92,255,.55),transparent 62%),radial-gradient(50% 36% at 100% 22%,rgba(0,205,210,.32),transparent 62%),radial-gradient(70% 45% at 40% 100%,rgba(255,92,150,.34),transparent 62%);padding:22px 10px;font-family:\'DM Sans\',Arial,Helvetica,sans-serif;color:#f4f6ff">' + inner +
+    '<div style="max-width:560px;margin:0 auto;text-align:center;padding:8px 0 2px;font-size:12px;color:#8590bd">Wysłano z formularza Treningi</div></div>';
+  return { subject: subject, text: text.join('\n'), html: html, inner: inner };
 }
 
 /** A frosted-glass card of the summary mail; accent = colour of the strip (and glow) on its left. */

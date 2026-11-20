@@ -330,6 +330,27 @@
   .check input:focus-visible + .box { outline:3px solid var(--blue); outline-offset:2px; }
   .check:active .box { transform:scale(.92); }
   #mailBox, #pinBox { margin-top:14px; }
+  /* after saving: confirmation page with the summary */
+  body.locked { overflow:hidden; }
+  .done-view { position:fixed; inset:0; z-index:100; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:28px 14px 120px; background:
+    radial-gradient(60% 38% at 8% 0%, rgba(124,92,255,.55), transparent 62%),
+    radial-gradient(50% 36% at 100% 22%, rgba(0,205,210,.32), transparent 62%),
+    radial-gradient(70% 45% at 40% 100%, rgba(255,92,150,.34), transparent 62%), #0b0f1f; }
+  .done-inner { max-width:560px; margin:0 auto; text-align:center; }
+  .done-check { width:76px; height:76px; margin:0 auto 12px; border-radius:50%; display:grid; place-items:center; color:#0b2a1e;
+    background:linear-gradient(135deg,#4fd09a,#8ff0c4); box-shadow:0 0 0 8px rgba(79,208,154,.16), 0 0 34px rgba(79,208,154,.6); }
+  .done-check svg { width:40px; height:40px; }
+  .done-inner h2 { margin:0; font-size:1.7rem; font-weight:800; color:#8ff0c4; }
+  .done-info { margin:6px 0 0; font-size:0.95rem; color:var(--muted); }
+  .done-warn { margin:12px 0 0; padding:10px 12px; border-radius:18px; background:var(--red-soft); color:#ffb4ae; font-size:0.9rem; text-align:left; }
+  .done-summary { zoom:0.86; margin-top:18px; text-align:left; }
+  .done-summary a { text-decoration:none; }
+  .done-view .bar { position:fixed; }
+  .done-check.pop-in { animation:donePop .55s cubic-bezier(.2,1.4,.4,1) both; }
+  @keyframes donePop { from { transform:scale(.3); opacity:0; } to { transform:scale(1); opacity:1; } }
+  @media (prefers-reduced-motion: reduce) { .done-check.pop-in { animation:none; } }
+  /* error bar */
+  .notice.err { font-weight:600; border:1px solid rgba(255,138,128,.55); }
   /* training picker: round chevron button set in from the edge */
   .select-wrap { position:relative; }
   .select-wrap select { -webkit-appearance:none; appearance:none; padding-right:56px; }
@@ -454,6 +475,21 @@
   </form>
 </main>
 
+<div id="doneView" class="done-view hidden" role="dialog" aria-modal="true" aria-labelledby="doneTitle">
+  <div class="done-inner">
+    <div class="done-check" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+    <h2 id="doneTitle">Zapisano!</h2>
+    <p id="doneInfo" class="done-info"></p>
+    <p id="doneWarn" class="done-warn hidden"></p>
+    <div id="doneSummary" class="done-summary"></div>
+  </div>
+  <div class="bar">
+    <div class="bar-inner">
+      <button type="button" class="primary" id="doneNext">Kolejny trening</button>
+    </div>
+  </div>
+</div>
+
 <script>
   // Address of the Google Apps Script web app (see apps-script/Code.gs).
   const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx10vXJ1YhC_JBdEa6_6YujkQnQs4NI73sdJOsoXZ8-Ccu92L7n6gzIubjqxbBd0rVw/exec';
@@ -543,6 +579,35 @@
     el.className = 'notice show ' + kind;
     el.textContent = text;
     animate(el, [{ opacity: 0, transform: 'translateY(-8px)' }, { opacity: 1, transform: 'none' }], { duration: 300 });
+    // The error bar is at the top of the page: take the person there.
+    if (kind === 'err') window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  // After a successful save: a page with the confirmation and the summary (HTML made by the script).
+  function showDone(result) {
+    const info = ['Zakładka „' + result.sheet + '”'];
+    if (result.emailed) info.push('podsumowanie wysłane na ' + result.emailed + ' adr.');
+    $('doneInfo').textContent = info.join(' · ');
+    const warn = $('doneWarn');
+    warn.textContent = result.emailError ? 'Trening jest zapisany, ale maila nie udało się wysłać: ' + result.emailError : '';
+    warn.classList.toggle('hidden', !result.emailError);
+    const box = $('doneSummary');
+    box.innerHTML = typeof result.summary === 'string' ? result.summary : '';
+    box.querySelectorAll('a').forEach((a) => { a.target = '_blank'; a.rel = 'noopener'; });
+    const view = $('doneView');
+    view.classList.remove('hidden');
+    view.scrollTop = 0;
+    document.body.classList.add('locked');
+    const check = view.querySelector('.done-check');
+    check.classList.remove('pop-in');
+    void check.offsetWidth;
+    check.classList.add('pop-in');
+  }
+
+  function closeDone() {
+    $('doneView').classList.add('hidden');
+    document.body.classList.remove('locked');
+    window.scrollTo({ top: 0 });
   }
 
   function currentTraining() {
@@ -1493,7 +1558,7 @@
       if (result.emailError) message += ' Maila nie udało się wysłać: ' + result.emailError;
       showStatus(result.emailError ? 'err' : 'ok', message);
       saved = true;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      showDone(result);
     } catch (error) {
       showStatus('err', 'Nie udało się zapisać: ' + error.message + ' Dane zostały na stronie, spróbuj ponownie.');
     } finally {
@@ -1511,6 +1576,8 @@
   });
 
   // ---------- wiring ----------
+
+  $('doneNext').addEventListener('click', closeDone);
 
   trainingSelect.addEventListener('change', () => {
     try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
