@@ -716,6 +716,11 @@
     if (/Nieprawidłowa data/i.test(text)) return $('date');
     if (/nazwy treningu|nazwa treningu|Zakładka|Nie znaleziono treningu/i.test(text)) return isNewTraining() ? $('newName') : trainingSelect;
     if (/Ćwiczenie bez nazwy/i.test(text)) return incompleteField();
+    const dup = text.match(/^Kod ([A-Z]\d+[a-z]?) /);
+    if (dup) {
+      const card = [...exercisesEl.querySelectorAll('.exercise')].find((c) => variantKey(cardCode(c)) === variantKey(dup[1]));
+      if (card) return card.querySelector('.code-input');
+    }
     const named = text.match(/w ćwiczeniu "([^"]*)"/);
     if (named) {
       const card = [...exercisesEl.querySelectorAll('.exercise')].find((c) => c.querySelector('.name').value.trim() === named[1]);
@@ -968,6 +973,43 @@
     }
     return '';
   }
+  // "E2" and "E2a" are the same variant; one code belongs to one exercise only.
+  const variantKey = (code) => {
+    const m = /^([A-Z]\d+)([a-z]?)$/.exec(code || '');
+    return m ? m[1] + (m[2] || 'a') : '';
+  };
+  // Two exercises with the same code (in the form, or one already in the sheet) cannot be saved; E2a + E2b can.
+  function findDuplicateCode() {
+    const items = [...exercisesEl.querySelectorAll('.exercise')]
+      .map((card) => ({ card, data: readCard(card) }))
+      .filter(({ data }) => data.name && data.sets.some((s) => s.value >= 0));
+    const seen = new Map();
+    for (const { card, data } of items) {
+      const key = variantKey(data.code);
+      if (!key) continue;
+      if (seen.has(key)) {
+        const slot = key.slice(0, -1);
+        return { field: card.querySelector('.code-input'), message: 'Kod ' + data.code + ' mają dwa ćwiczenia: „' + seen.get(key) + '” i „' + data.name + '”. Alternatywy muszą mieć różne litery, np. ' + slot + 'a i ' + slot + 'b.' };
+      }
+      seen.set(key, data.name);
+    }
+    const training = isNewTraining() ? null : currentTraining();
+    if (!training) return null;
+    for (const { card, data } of items) {
+      const key = variantKey(data.code);
+      if (!key) continue;
+      // the alternatives of the same tile manage their own codes, every other exercise of the sheet is a real clash
+      const own = new Set(card._variants.filter((v) => v && v.name).map((v) => v.name.toLowerCase()));
+      own.add(data.name.toLowerCase());
+      const other = training.exercises.find((e) => !own.has(e.name.toLowerCase()) && variantKey(e.code) === key);
+      if (other) {
+        const slot = key.slice(0, -1);
+        return { field: card.querySelector('.code-input'), message: 'Kod ' + data.code + ' ma już ćwiczenie „' + other.name + '” w arkuszu. Wybierz inną literę wariantu, np. ' + slot + 'a i ' + slot + 'b.' };
+      }
+    }
+    return null;
+  }
+
   // The variant letter is filled in by itself and stays editable, but never equals another alternative's.
   function fixCodeInput(card) {
     const input = card.querySelector('.code-input');
@@ -1739,6 +1781,8 @@
         return;
       }
     }
+    const duplicate = findDuplicateCode();
+    if (duplicate) { showStatus('err', duplicate.message, duplicate.field); return; }
     const exercises = collectValid();
     if (!exercises.length) { showStatus('err', 'Dodaj co najmniej jedno ćwiczenie z nazwą i serią (powtórzenia lub czas).', incompleteField()); return; }
 

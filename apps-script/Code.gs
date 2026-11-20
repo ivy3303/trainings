@@ -116,6 +116,7 @@ function saveSession_(data) {
   lock.waitLock(10000);
   try {
     validate_(data);
+    data.exercises = sortExercises_(data.exercises); // the sheet and the summary follow the alphabet of the codes
     var emails = data.emails || [];
     var media = data.media || [];
     if (emails.length || media.length) requirePin_(data);
@@ -137,6 +138,7 @@ function saveSession_(data) {
       }
     }
 
+    if (!data.create) checkCodesInSheet_(sheet, timeZone, data.exercises);
     var files = media.length ? mediaFiles_(media) : [];
     var before = previousByName_(sheet, timeZone);
     appendSession_(sheet, data, timeZone, files);
@@ -356,6 +358,7 @@ function validate_(data) {
       }
     });
   });
+  checkDuplicateCodes_(data.exercises);
 }
 
 function cleanSheetName_(name) {
@@ -563,6 +566,7 @@ function appendSession_(sheet, data, timeZone, files) {
   sheet.setColumnWidth(col, 90);
   sheet.setColumnWidth(col + 1, 70);
 
+  sortExerciseRows_(sheet, timeZone); // alphabetical by code, whatever order the exercises came in
   formatLeft_(sheet, timeZone);
 }
 
@@ -947,6 +951,95 @@ function authorize() {
 // ---------- helpers ----------
 
 /** "c2B" -> "C2b"; "" for anything that is not letter + up to two digits + optional variant letter (needs digits). */
+/** Sort key of a code: block letter, section number, variant letter (A1 counts as variant a). */
+function codeKey_(code) {
+  var m = /^([A-Z])(\d*)([a-z]?)$/.exec(code || '');
+  if (!m) return null;
+  return [m[1].charCodeAt(0), Number(m[2] || 0), m[3] ? m[3].charCodeAt(0) - 96 : 1];
+}
+
+function compareCodes_(a, b) {
+  var ka = codeKey_(a);
+  var kb = codeKey_(b);
+  if (!ka && !kb) return 0;
+  if (!ka) return 1;
+  if (!kb) return -1;
+  for (var i = 0; i < 3; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+  return 0;
+}
+
+/** The exercises of one save in alphabetical order of their codes (no code = at the end, order kept). */
+function sortExercises_(exercises) {
+  return exercises.map(function (exercise, index) { return { exercise: exercise, index: index }; })
+    .sort(function (a, b) {
+      var diff = compareCodes_(normalizeCode_(a.exercise.code || a.exercise.group), normalizeCode_(b.exercise.code || b.exercise.group));
+      return diff || a.index - b.index;
+    })
+    .map(function (item) { return item.exercise; });
+}
+
+/** "E2" and "E2a" are the same variant; "E2a" and "E2b" are two. Codes without a number have no identity. */
+function variantKey_(code) {
+  var m = /^([A-Z]\d+)([a-z]?)$/.exec(code || '');
+  return m ? m[1] + (m[2] || 'a') : '';
+}
+
+/** One code may belong to one exercise only: two E2 are refused, E2a and E2b are fine. */
+function checkDuplicateCodes_(exercises) {
+  var seen = {};
+  exercises.forEach(function (exercise) {
+    var code = normalizeCode_(exercise.code || exercise.group);
+    var key = variantKey_(code);
+    if (!key) return;
+    var name = String(exercise.name).trim();
+    if (seen[key]) {
+      var slot = key.slice(0, -1);
+      throw new Error('Kod ' + code + ' ma dwa ćwiczenia: "' + seen[key] + '" i "' + name + '". Alternatywy muszą mieć różne litery, np. ' + slot + 'a i ' + slot + 'b.');
+    }
+    seen[key] = name;
+  });
+}
+
+/** The same check against the other exercises already in the sheet (those saved again now are skipped: their code is updated). */
+function checkCodesInSheet_(sheet, timeZone, exercises) {
+  var rows = readLayout_(sheet, timeZone).rows;
+  var saved = {};
+  exercises.forEach(function (exercise) { saved[String(exercise.name).trim().toLowerCase()] = true; });
+  exercises.forEach(function (exercise) {
+    var code = normalizeCode_(exercise.code || exercise.group);
+    var key = variantKey_(code);
+    if (!key) return;
+    rows.forEach(function (entry) {
+      if (saved[entry.name.toLowerCase()] || variantKey_(entry.code) !== key) return;
+      var slot = key.slice(0, -1);
+      throw new Error('Kod ' + code + ' ma już ćwiczenie "' + entry.name + '" w arkuszu. Wybierz inną literę wariantu, np. ' + slot + 'a i ' + slot + 'b.');
+    });
+  });
+}
+
+/**
+ * Puts the exercise rows of the tab in alphabetical order of their codes (A1, A2, B1, C2a, C2b …), whatever
+ * the order they were added in. An exercise is a block of consecutive rows (one per set) that moves as a whole.
+ */
+function sortExerciseRows_(sheet, timeZone) {
+  for (var guard = 0; guard < 200; guard++) {
+    var rows = readLayout_(sheet, timeZone).rows;
+    var blocks = [];
+    rows.forEach(function (entry) {
+      var last = blocks[blocks.length - 1];
+      if (last && last.name === entry.name.toLowerCase() && last.first + last.count === entry.row) { last.count += 1; return; }
+      blocks.push({ name: entry.name.toLowerCase(), code: entry.code, first: entry.row, count: 1, index: blocks.length });
+    });
+    var order = blocks.slice().sort(function (a, b) { return compareCodes_(a.code, b.code) || a.index - b.index; });
+    var at = -1;
+    for (var i = 0; i < blocks.length; i++) {
+      if (order[i] !== blocks[i]) { at = i; break; }
+    }
+    if (at < 0) return;
+    sheet.moveRows(sheet.getRange(order[at].first, 1, order[at].count, 1), blocks[at].first);
+  }
+}
+
 function normalizeCode_(value) {
   var text = String(value === null || value === undefined ? '' : value).trim();
   var match = /^([A-Za-z])(\d{0,2})([A-Za-z]?)$/.exec(text);
