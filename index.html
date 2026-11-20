@@ -2,19 +2,24 @@
 <html lang="pl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Treningi</title>
 <style>
   :root {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --line: #334155;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --accent: #38bdf8;
-    --accent-text: #0b1220;
-    --ok: #4ade80;
-    --err: #f87171;
+    --bg: #e8ecf4;
+    --card: #ffffff;
+    --raised: #f1f4fa;
+    --line: #ccd5e5;
+    --text: #0e1a33;
+    --muted: #52627f;
+    --navy: #14284b;
+    --navy-soft: #e3e9f6;
+    --green: #1e6b45;
+    --green-soft: #ddf0e5;
+    --accent: var(--navy);
+    --accent-text: #ffffff;
+    --ok: #1e6b45;
+    --err: #b91c1c;
   }
   * { box-sizing: border-box; }
   body {
@@ -23,138 +28,158 @@
     color: var(--text);
     font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     line-height: 1.4;
+    -webkit-tap-highlight-color: transparent;
   }
-  main { max-width: 720px; margin: 0 auto; padding: 20px 16px 120px; }
-  h1 { margin: 0 0 4px; font-size: 1.6rem; }
-  .subtitle { margin: 0 0 20px; color: var(--muted); }
+  main { max-width: 720px; margin: 0 auto; padding: 16px 12px 110px; }
+  @media (min-width: 745px) { h1 { margin: 0 0 14px; border-radius: 14px; } }
+  h1 { margin: -16px -12px 14px; padding: 16px 16px 14px; font-size: 1.4rem; color: #fff; background: var(--navy); border-bottom: 4px solid var(--green); }
   .card {
     background: var(--card);
     border: 1px solid var(--line);
     border-radius: 14px;
-    padding: 16px;
-    margin-bottom: 16px;
+    padding: 12px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 2px rgba(20, 40, 75, 0.08);
   }
-  label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 4px; }
   input, textarea, select {
     width: 100%;
-    background: var(--bg);
+    background: #fff;
     color: var(--text);
     border: 1px solid var(--line);
-    border-radius: 8px;
-    padding: 10px 12px;
+    border-radius: 10px;
+    padding: 0 12px;
+    height: 48px;
     font: inherit;
+    font-size: 1rem; /* 16px: stops mobile browsers from zooming in on focus */
   }
+  textarea { height: auto; min-height: 72px; padding: 10px 12px; resize: vertical; }
   input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 0; }
-  textarea { resize: vertical; min-height: 60px; }
   input[type=number]::-webkit-inner-spin-button,
   input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
   input[type=number] { -moz-appearance: textfield; appearance: textfield; }
-  .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
-  .hidden { display: none; }
-  .hint { margin: 8px 0 0; font-size: 0.85rem; color: var(--muted); }
-  .exercise-head { display: flex; gap: 8px; align-items: end; margin-bottom: 12px; }
-  .exercise-head .grow { flex: 1; min-width: 0; }
-  .exercise-head .mode-box { width: 150px; }
-  @media (max-width: 480px) {
-    .exercise-head { display: grid; grid-template-columns: 1fr 30px; }
-    .exercise-head .grow { order: 1; }
-    .exercise-head .remove-exercise { order: 2; }
-    .exercise-head .mode-box { order: 3; grid-column: 1 / -1; width: auto; }
-  }
-  .set-labels, .set {
-    display: grid;
-    grid-template-columns: 22px 1fr 1.5fr 30px;
-    gap: 8px;
-    align-items: center;
-  }
-  .set-labels { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; }
-  .sets { display: grid; gap: 8px; }
-  .set .num { color: var(--muted); text-align: center; }
-  .num-field { display: flex; gap: 4px; align-items: stretch; }
-  .num-field input { min-width: 0; padding: 8px 4px; text-align: center; }
-  .num-field input.changed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-  .num-field .step {
-    flex: 0 0 24px;
-    padding: 0;
-    font-size: 1.1rem;
-    line-height: 1;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .num-field .step:hover { color: var(--accent); border-color: var(--accent); filter: none; }
-  .num-field.disabled .step { opacity: 0.35; pointer-events: none; }
-  .num-field input:disabled { opacity: 0.6; }
-  .num-field { flex: 1; min-width: 0; }
-  .weight-cell { display: flex; gap: 4px; align-items: stretch; min-width: 0; }
-  .bw {
-    flex: 0 0 34px;
-    padding: 0;
-    font-size: 0.75rem;
-    font-weight: 600;
-    background: var(--bg);
-    border: 1px solid var(--line);
-    color: var(--muted);
-  }
-  .bw.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); filter: none; }
-  .bar-inner button { width: 100%; }
-  .add-set {
-    margin-top: 10px;
-    width: 100%;
-    background: transparent;
-    border: 1px dashed var(--line);
-    color: var(--muted);
-  }
-  .note-field { margin-top: 12px; }
-  .prev { margin: 10px 0 0; font-size: 0.85rem; color: var(--muted); }
-  .prev .up { color: var(--ok); font-weight: 600; }
-  .prev .down { color: var(--err); font-weight: 600; }
   button {
     font: inherit;
     border: 0;
-    border-radius: 8px;
-    padding: 10px 14px;
+    border-radius: 10px;
     cursor: pointer;
     color: var(--text);
     background: var(--line);
+    touch-action: manipulation; /* fast repeated taps on + / − without double-tap zoom */
   }
-  button:hover { filter: brightness(1.15); }
-  button.primary { background: var(--accent); color: var(--accent-text); font-weight: 600; }
-  button.icon { padding: 8px 0; width: 30px; background: transparent; color: var(--muted); }
-  button.icon:hover { color: var(--err); }
-  button:disabled { opacity: 0.5; cursor: not-allowed; }
-  .add-exercise { width: 100%; margin-bottom: 16px; }
+  button:active { filter: brightness(0.92); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .hidden { display: none; }
+
+  /* top card */
+  .top-row { display: grid; grid-template-columns: 1.1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .link-btn {
+    background: transparent;
+    color: var(--navy);
+    padding: 0;
+    height: 40px;
+    text-align: left;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+  .hint { margin: 6px 0 0; font-size: 0.85rem; color: var(--muted); }
+
+  /* exercise */
+  .exercise-head { display: grid; grid-template-columns: 1fr 44px; gap: 8px; margin-bottom: 8px; }
+  .exercise-head .name { font-weight: 600; }
+  .remove-exercise { background: transparent; color: var(--muted); font-size: 1.1rem; }
+  .remove-exercise:active { color: var(--err); }
+  .prev { margin: 0 0 10px; font-size: 0.9rem; color: var(--muted); }
+  .prev:empty { display: none; }
+  .prev .up { color: var(--ok); font-weight: 600; }
+  .prev .down { color: var(--err); font-weight: 600; }
+  .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 10px; }
+  .segmented button {
+    height: 40px;
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .segmented button.on { background: var(--green-soft); border-color: var(--green); color: var(--green); font-weight: 700; }
+
+  /* one set = one block */
+  .sets { display: grid; gap: 8px; }
+  .set { background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 6px 8px 8px; }
+  /* both rows share the same three columns: label | − input + | ✕ or BW */
+  .set-row { display: grid; grid-template-columns: 58px minmax(0, 1fr) 46px; gap: 6px; align-items: center; }
+  .set-row + .set-row { margin-top: 6px; }
+  .row-label { font-size: 0.7rem; line-height: 1.2; color: var(--muted); }
+  .row-label b { display: block; font-size: 0.85rem; color: var(--text); }
+  .remove-set { width: 46px; height: 52px; padding: 0; background: transparent; color: var(--muted); font-size: 1.2rem; }
+  .remove-set:active { color: var(--err); }
+  .remove-set:disabled { visibility: hidden; }
+  .bw {
+    width: 46px;
+    height: 52px;
+    padding: 0;
+    font-size: 0.9rem;
+    font-weight: 700;
+    background: #fff;
+    border: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .bw.on { background: var(--green); border-color: var(--green); color: #fff; }
+  .num-field { display: flex; gap: 3px; }
+  .num-field input {
+    min-width: 0;
+    height: 52px;
+    padding: 0 2px;
+    text-align: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+  }
+  .num-field input.changed { border-color: var(--green); background: var(--green-soft); box-shadow: 0 0 0 1px var(--green); }
+  .num-field input:disabled { background: #e3e8f1; color: var(--muted); }
+  .num-field .step {
+    flex: 0 0 40px;
+    height: 52px;
+    padding: 0;
+    font-size: 1.5rem;
+    line-height: 1;
+    background: var(--navy-soft);
+    border: 1px solid var(--line);
+    color: var(--navy);
+  }
+  .num-field.disabled .step { opacity: 0.35; pointer-events: none; }
+
+  .set-actions { display: block; margin-top: 8px; }
+  .set-actions button {
+    width: 100%;
+    height: 48px;
+    background: #fff;
+    border: 1px dashed #8fa3c4;
+    color: var(--navy);
+    font-weight: 600;
+  }
+  .note-field { margin-top: 4px; }
+  .add-exercise { width: 100%; height: 52px; margin-bottom: 14px; background: #fff; border: 1px solid var(--line); font-weight: 600; }
+
   .bar {
     position: fixed;
     left: 0; right: 0; bottom: 0;
     background: var(--card);
     border-top: 1px solid var(--line);
-    padding: 12px 16px;
+    box-shadow: 0 -2px 8px rgba(20, 40, 75, 0.10);
+    padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
   }
-  .bar-inner {
-    max-width: 720px;
-    margin: 0 auto;
-    display: flex;
-    gap: 12px;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .summary { font-size: 0.9rem; color: var(--muted); }
-  .summary strong { color: var(--text); }
-  .summary .up { color: var(--ok); }
-  .summary .down { color: var(--err); }
-  .notice { padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 0.9rem; display: none; }
+  .bar-inner { max-width: 720px; margin: 0 auto; }
+  .primary { width: 100%; height: 52px; background: var(--accent); color: var(--accent-text); font-weight: 700; font-size: 1.05rem; }
+
+  .notice { padding: 10px 12px; border-radius: 10px; margin-bottom: 14px; font-size: 0.9rem; display: none; }
   .notice.show { display: block; }
-  .notice.warn { background: #422006; color: #fdba74; }
-  .notice.ok { background: #052e16; color: var(--ok); }
-  .notice.err { background: #450a0a; color: var(--err); }
+  .notice.warn { background: var(--navy-soft); color: var(--navy); }
+  .notice.ok { background: var(--green-soft); color: var(--green); }
+  .notice.err { background: #fef2f2; color: #991b1b; }
 </style>
 </head>
 <body>
 <main>
   <h1>Treningi</h1>
-  <p class="subtitle">Wybierz trening, popraw wyniki i zapisz. Każdy zapis dopisuje nowy wpis z datą do zakładki tego treningu.</p>
 
   <div id="configWarning" class="notice warn">
     Brak adresu skryptu Google. Wklej adres aplikacji internetowej Apps Script do stałej
@@ -164,7 +189,7 @@
 
   <form id="form" autocomplete="off">
     <div class="card">
-      <div class="row">
+      <div class="top-row">
         <div>
           <label for="training">Trening</label>
           <select id="training"></select>
@@ -174,12 +199,13 @@
           <input id="date" type="date" required>
         </div>
       </div>
-      <div id="newNameBox" class="hidden" style="margin-bottom:12px">
-        <label for="newName">Nazwa nowego treningu (będzie nazwą zakładki w arkuszu)</label>
+      <div id="newNameBox" class="hidden" style="margin-bottom:10px">
+        <label for="newName">Nazwa nowego treningu (nazwa zakładki w arkuszu)</label>
         <input id="newName" type="text" placeholder="np. FBW A, Push, Nogi">
       </div>
-      <div>
-        <label for="notes">Notatki do całego treningu (opcjonalnie)</label>
+      <button type="button" class="link-btn" id="showNotes">+ Notatka do całego treningu</button>
+      <div id="notesBox" class="hidden">
+        <label for="notes">Notatka do całego treningu</label>
         <textarea id="notes" placeholder="Samopoczucie, ogólne wrażenia, plan na następny raz…"></textarea>
       </div>
       <p class="hint" id="lastInfo"></p>
@@ -205,7 +231,7 @@
   const NEW_VALUE = '__new__';
   const LAST_SELECTED_KEY = 'trainings.lastSelected';
 
-  // Step of the small − / + buttons.
+  // Step of the − / + buttons.
   const STEP = { reps: 1, time: 5, weight: 2.5 };
 
   const $ = (id) => document.getElementById(id);
@@ -215,6 +241,7 @@
   const submitBtn = $('submit');
 
   // trainings = [{ name, lastDate, exercises: [{ name, mode, note, sets: [{ reps, seconds, weight }] }] }]
+  // weight is a number (kg), 'BW' or null.
   let trainings = [];
 
   const isConfigured = () => !SCRIPT_URL.startsWith('PASTE_');
@@ -248,9 +275,17 @@
 
   async function loadTrainings() {
     if (!isConfigured()) { trainings = []; return; }
-    const response = await fetch(SCRIPT_URL + '?action=list');
-    const result = await response.json();
-    if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
+    let result;
+    try {
+      const response = await fetch(SCRIPT_URL + '?action=list');
+      result = await response.json();
+    } catch (error) {
+      throw new Error('brak poprawnej odpowiedzi ze skryptu Google. Sprawdź, czy wdrożenie ma dostęp „Każdy” i czy zatwierdzono uprawnienia skryptu.');
+    }
+    if (!result.ok) throw new Error(result.error || 'nieznany błąd skryptu.');
+    if (!Array.isArray(result.trainings)) {
+      throw new Error('skrypt Google jest w starej wersji (brak listy treningów). Wklej najnowszy Code.gs i wdróż go jako nową wersję.');
+    }
     trainings = result.trainings;
   }
 
@@ -291,31 +326,40 @@
     return training.exercises.find((e) => e.name.toLowerCase() === key) || null;
   }
 
-  function numberField(cls, step, min) {
+  function numberField(cls, step, min, extra) {
     return '<div class="num-field">' +
       '<button type="button" class="step" data-dir="-1" tabindex="-1" aria-label="Mniej">−</button>' +
       '<input type="number" class="' + cls + '" inputmode="decimal" min="' + min + '" step="any" data-step="' + step + '" data-min="' + min + '">' +
       '<button type="button" class="step" data-dir="1" tabindex="-1" aria-label="Więcej">+</button>' +
+      (extra || '') +
       '</div>';
   }
 
   function modeOf(card) {
-    return card.querySelector('.mode').value; // 'reps' | 'time'
+    return card.dataset.mode; // 'reps' | 'time'
+  }
+
+  function mainLabel(timed) {
+    return timed ? 'sek.' : 'powt.';
   }
 
   function applyMode(card) {
     const timed = modeOf(card) === 'time';
-    card.querySelector('.main-label').textContent = timed ? 'Czas (sekundy)' : 'Powtórzenia';
+    card.querySelectorAll('.segmented button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.mode === modeOf(card));
+    });
+    card.querySelectorAll('.main-label').forEach((el) => { el.textContent = mainLabel(timed); });
     card.querySelectorAll('.set .main').forEach((input) => {
       input.dataset.step = timed ? STEP.time : STEP.reps;
-      input.placeholder = timed ? 'sek.' : 'powt.';
     });
   }
 
   function renumber(card) {
-    card.querySelectorAll('.set').forEach((row, i) => {
-      row.querySelector('.num').textContent = i + 1;
+    const rows = card.querySelectorAll('.set');
+    rows.forEach((row, i) => {
+      row.querySelector('.num').textContent = 'Seria ' + (i + 1);
     });
+    rows.forEach((row) => { row.querySelector('.remove-set').disabled = rows.length <= 1; });
   }
 
   function setBodyweight(row, on) {
@@ -324,7 +368,7 @@
     row.dataset.bw = on ? '1' : '';
     button.classList.toggle('on', on);
     button.setAttribute('aria-pressed', on ? 'true' : 'false');
-    row.querySelector('.weight-cell .num-field').classList.toggle('disabled', on);
+    row.querySelector('.weight-field .num-field').classList.toggle('disabled', on);
     input.disabled = on;
     if (on) input.value = '';
     input.placeholder = on ? 'BW' : 'kg';
@@ -335,25 +379,26 @@
     const row = document.createElement('div');
     row.className = 'set';
     row.innerHTML =
-      '<span class="num"></span>' +
-      numberField('main', timed ? STEP.time : STEP.reps, 1) +
-      '<div class="weight-cell">' + numberField('weight', STEP.weight, 0) +
-        '<button type="button" class="bw" aria-pressed="false">BW</button></div>' +
-      '<button type="button" class="icon remove-set" title="Usuń serię" aria-label="Usuń serię">✕</button>';
+      '<div class="set-row first">' +
+        '<div class="row-label"><b class="num"></b><span class="main-label"></span></div>' +
+        numberField('main', timed ? STEP.time : STEP.reps, 1) +
+        '<button type="button" class="remove-set" title="Usuń serię" aria-label="Usuń serię">✕</button>' +
+      '</div>' +
+      '<div class="set-row">' +
+        '<div class="row-label"><b>Ciężar</b>kg</div>' +
+        '<div class="weight-field">' + numberField('weight', STEP.weight, 0) + '</div>' +
+        '<button type="button" class="bw" aria-pressed="false">BW</button>' +
+      '</div>';
     const main = row.querySelector('.main');
     main.placeholder = timed ? 'sek.' : 'powt.';
     row.querySelector('.weight').placeholder = 'kg';
+    row.querySelector('.main-label').textContent = mainLabel(timed);
     if (data) {
       const value = timed ? data.seconds : data.reps;
       main.value = value ? value : '';
       if (data.weight === 'BW') setBodyweight(row, true);
       else row.querySelector('.weight').value = data.weight === null || data.weight === undefined ? '' : data.weight;
     }
-    row.querySelector('.remove-set').addEventListener('click', () => {
-      row.remove();
-      renumber(card);
-      refresh();
-    });
     card.querySelector('.sets').appendChild(row);
     renumber(card);
   }
@@ -361,23 +406,25 @@
   function createExercise(data) {
     const card = document.createElement('div');
     card.className = 'card exercise';
+    card.dataset.mode = data && data.mode === 'time' ? 'time' : 'reps';
     card.innerHTML =
       '<div class="exercise-head">' +
-        '<div class="grow"><label>Ćwiczenie</label>' +
-        '<input type="text" class="name" list="exerciseNames" placeholder="np. Przysiad ze sztangą"></div>' +
-        '<div class="mode-box"><label>Mierzone</label>' +
-        '<select class="mode"><option value="reps">powtórzeniami</option><option value="time">czasem</option></select></div>' +
-        '<button type="button" class="icon remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
+        '<input type="text" class="name" list="exerciseNames" placeholder="Nazwa ćwiczenia">' +
+        '<button type="button" class="remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
       '</div>' +
-      '<div class="set-labels"><span>#</span><span class="main-label">Powtórzenia</span><span>Ciężar (kg)</span><span></span></div>' +
+      '<p class="prev"></p>' +
+      '<div class="segmented">' +
+        '<button type="button" data-mode="reps">Powtórzenia</button>' +
+        '<button type="button" data-mode="time">Czas</button>' +
+      '</div>' +
       '<div class="sets"></div>' +
-      '<button type="button" class="add-set">+ Dodaj serię</button>' +
-      '<div class="note-field"><label>Uwagi do ćwiczenia (opcjonalnie)</label>' +
-      '<input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>' +
-      '<p class="prev"></p>';
+      '<div class="set-actions">' +
+        '<button type="button" class="add-set">+ Seria</button>' +
+      '</div>' +
+      '<button type="button" class="link-btn note-toggle">+ Uwaga do ćwiczenia</button>' +
+      '<div class="note-field hidden"><input type="text" class="note-input" placeholder="np. ostatnia seria ciężko, zwiększyć ciężar"></div>';
 
     card.querySelector('.name').value = (data && data.name) || '';
-    card.querySelector('.mode').value = data && data.mode === 'time' ? 'time' : 'reps';
     applyMode(card);
 
     card.querySelector('.remove-exercise').addEventListener('click', () => {
@@ -385,7 +432,7 @@
       refresh();
     });
     card.querySelector('.add-set').addEventListener('click', () => {
-      // A new set starts with the values of the previous one, so only changes need typing.
+      // A new set starts with the values of the previous one, so only changes need tapping.
       const rows = card.querySelectorAll('.set');
       const last = rows[rows.length - 1];
       if (last) {
@@ -402,6 +449,13 @@
       }
       refresh();
     });
+    card.querySelector('.sets').addEventListener('click', (event) => {
+      const button = event.target.closest('.remove-set');
+      if (!button || card.querySelectorAll('.set').length <= 1) return;
+      button.closest('.set').remove();
+      renumber(card);
+      refresh();
+    });
 
     const sets = data && data.sets && data.sets.length ? data.sets : [null];
     sets.forEach((s) => createSet(card, s));
@@ -410,7 +464,6 @@
   }
 
   function readCard(card) {
-    const timed = modeOf(card) === 'time';
     const read = (el) => (el.value === '' ? NaN : Number(el.value));
     const sets = [];
     card.querySelectorAll('.set').forEach((row) => {
@@ -421,7 +474,7 @@
     });
     return {
       name: card.querySelector('.name').value.trim(),
-      mode: timed ? 'time' : 'reps',
+      mode: modeOf(card),
       note: card.querySelector('.note-input').value.trim(),
       sets
     };
@@ -515,11 +568,13 @@
     if (training) {
       training.exercises.forEach(createExercise);
       $('lastInfo').textContent = training.lastDate
-        ? 'Formularz wypełniony wynikami z ostatniego treningu (' + training.lastDate + '). Zmień to, co poszło inaczej.'
+        ? 'Wyniki z ostatniego treningu (' + training.lastDate + '). Zmień to, co poszło inaczej.'
         : 'Ten trening nie ma jeszcze żadnych wpisów.';
     } else {
       createExercise();
-      $('lastInfo').textContent = 'Nowy trening: pierwszy zapis stworzy nową zakładkę i będzie punktem odniesienia.';
+      $('lastInfo').textContent = trainings.length || !isConfigured()
+        ? 'Nowy trening: pierwszy zapis stworzy nową zakładkę.'
+        : 'Nie znaleziono żadnych treningów w arkuszu. Jeśli powinny tu być, sprawdź wdrożenie skryptu Google.';
     }
     refresh();
   }
@@ -578,10 +633,12 @@
       const result = await response.json();
       if (!result.ok) throw new Error(result.error || 'Nieznany błąd skryptu.');
 
-      await loadTrainings();
+      try { await loadTrainings(); } catch (error) { /* saved anyway; keep the previous list */ }
       renderTrainingSelect(result.sheet);
       try { localStorage.setItem(LAST_SELECTED_KEY, trainingSelect.value); } catch (e) {}
       $('notes').value = '';
+      $('notesBox').classList.add('hidden');
+      $('showNotes').classList.remove('hidden');
       $('newName').value = '';
       $('date').value = today();
       renderExercises();
@@ -601,29 +658,53 @@
     renderExercises();
   });
   form.addEventListener('input', refresh);
-  exercisesEl.addEventListener('change', (event) => {
-    if (event.target.classList.contains('mode')) {
-      applyMode(event.target.closest('.exercise'));
-      refresh();
-    }
+
+  $('showNotes').addEventListener('click', (event) => {
+    event.currentTarget.classList.add('hidden');
+    $('notesBox').classList.remove('hidden');
+    $('notes').focus();
   });
+
   exercisesEl.addEventListener('click', (event) => {
-    const bw = event.target.closest('.bw');
+    const target = event.target;
+
+    const modeButton = target.closest('.segmented button');
+    if (modeButton) {
+      const card = modeButton.closest('.exercise');
+      card.dataset.mode = modeButton.dataset.mode;
+      applyMode(card);
+      refresh();
+      return;
+    }
+
+    const noteToggle = target.closest('.note-toggle');
+    if (noteToggle) {
+      const card = noteToggle.closest('.exercise');
+      noteToggle.classList.add('hidden');
+      card.querySelector('.note-field').classList.remove('hidden');
+      card.querySelector('.note-input').focus();
+      return;
+    }
+
+    const bw = target.closest('.bw');
     if (bw) {
       const row = bw.closest('.set');
       setBodyweight(row, !row.dataset.bw);
       refresh();
       return;
     }
-    const button = event.target.closest('.step');
-    if (!button) return;
-    const input = button.parentElement.querySelector('input');
-    if (input.disabled) return;
-    const current = input.value === '' ? 0 : Number(input.value);
-    const next = round(current + Number(input.dataset.step) * Number(button.dataset.dir));
-    input.value = Math.max(Number(input.dataset.min), next);
-    refresh();
+
+    const step = target.closest('.step');
+    if (step) {
+      const input = step.parentElement.querySelector('input');
+      if (input.disabled) return;
+      const current = input.value === '' ? 0 : Number(input.value);
+      const next = round(current + Number(input.dataset.step) * Number(step.dataset.dir));
+      input.value = Math.max(Number(input.dataset.min), next);
+      refresh();
+    }
   });
+
   $('addExercise').addEventListener('click', () => { createExercise(); refresh(); });
 
   async function init() {
@@ -635,7 +716,7 @@
       $('status').className = 'notice';
     } catch (error) {
       trainings = [];
-      showStatus('err', 'Nie udało się wczytać treningów: ' + error.message + ' Możesz dodać nowy trening albo odświeżyć stronę.');
+      showStatus('err', 'Nie udało się wczytać ostatniego treningu: ' + error.message);
     }
     let remembered = null;
     try { remembered = localStorage.getItem(LAST_SELECTED_KEY); } catch (e) {}
