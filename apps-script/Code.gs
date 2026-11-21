@@ -80,6 +80,13 @@ var WELLNESS_NOTE_MAX = 500;
 var MAX_EMAILS = 5;
 var MAX_MEDIA = 20;
 // Pastel fills: block column and reps comparison with the previous date.
+var GROUP_TITLES = {
+  A: 'Przygotowanie ruchowe',
+  B: 'Rozgrzewka',
+  C: 'Część główna dla góry ciała i akcesoria dla dołu',
+  D: 'Część główna dla dołu ciała i akcesoria dla góry',
+  E: 'Część akcesoryjna i izolowana'
+};
 var GROUP_COLORS = { A: '#c6ebdc', B: '#fbd9b8', C: '#cbdcf9', D: '#efcff2', E: '#f8edb0' };
 // Colours of the summary mail, as on the page: the three mood dots and the block chip/strip.
 var MAIL_MOOD_COLORS = ['#f0746c', '#f1df8e', '#4fd09a'];
@@ -816,6 +823,9 @@ function buildSummary_(data, sheetName, before, files) {
     var name = String(exercise.name).trim();
     var remark = exercise.note ? String(exercise.note).trim() : '';
     var own = (files || []).filter(function (file) { return fileExercise_(file, data.exercises) === exercise; });
+    var sectionLetter = code ? code.charAt(0) : '';
+    var lastSection = sections[sections.length - 1];
+    if (GROUP_TITLES[sectionLetter] && !(lastSection && lastSection.letter === sectionLetter)) text.push('— ' + GROUP_TITLES[sectionLetter] + ' —', '');
     text.push((code ? code + '  ' : '') + name, '  ' + now + (prevText ? '   (poprzednio: ' + prevText + (diff ? ', ' + diff : ', bez zmian') + ')' : ''));
     if (remark) text.push('  Uwaga: ' + remark);
     own.forEach(function (file) { text.push('  Zdjęcie: ' + file.name + ': ' + file.url); });
@@ -879,8 +889,13 @@ function mailMood_(wellness, remark) {
 
 /** One card per training block: its exercises one under another, split by thin lines. */
 function mailSection_(letter, rows) {
+  var color = MAIL_CHIP_COLORS[letter] || '#8e99c8';
+  var title = GROUP_TITLES[letter]
+    ? '<div style="margin:0 0 12px;font-size:15px;line-height:22px;font-weight:700;color:#f4f6ff">' +
+      '<span style="display:inline-block;background:' + color + ';border-radius:8px;padding:0 8px;margin-right:8px;font-size:13px;line-height:22px;font-weight:800;color:#12162a">' + letter + '</span>' + esc_(GROUP_TITLES[letter]) + '</div>'
+    : '';
   var divider = '<div style="height:1px;line-height:1px;font-size:1px;margin:14px 0;background:#333a5e;background:rgba(255,255,255,.14)">&nbsp;</div>';
-  return mailCard_('', rows.join(divider), MAIL_CHIP_COLORS[letter] || '#8e99c8');
+  return mailCard_(title, rows.join(divider), color);
 }
 
 /** One exercise inside a section card. */

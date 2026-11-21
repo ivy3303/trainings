@@ -137,6 +137,12 @@
   .groups { display: grid; grid-template-columns: auto repeat(5, minmax(0, 1fr)) 58px; gap: 6px; align-items: center; margin-bottom: 10px; }
   .code-input { height: 40px; padding: 0 4px; text-align: center; font-weight: 700; }
   .groups-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding-right: 2px; }
+  .section-head { display:flex; align-items:center; gap:12px; margin:26px 2px 12px; --c:var(--line); }
+  .section-head:first-child { margin-top:6px; }
+  .section-head .letter { flex:none; width:34px; height:34px; border-radius:12px; display:grid; place-items:center; font-weight:800; font-size:1.05rem;
+    color:#1d2228; background:var(--c); box-shadow:0 0 18px color-mix(in srgb, var(--c) 55%, transparent); }
+  .section-head .title { font-size:1.05rem; font-weight:700; line-height:1.25; color:color-mix(in srgb, var(--c) 55%, #ffffff); }
+  .section-head::after { content:''; flex:1 1 20px; min-width:20px; height:2px; border-radius:2px; background:linear-gradient(90deg, var(--c), transparent); opacity:.55; }
   .group-chip { height: 40px; padding: 0; font-weight: 800; background: transparent; border: 1.5px solid var(--c); color: var(--c); }
   .group-chip.on { background: var(--c); color: #1d2228; }
   .exercise-head { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px; gap: 6px; margin-bottom: 8px; }
@@ -591,6 +597,13 @@
   // Training blocks as numbered in the plan (A0, B1, C2a …) and their pastel colours.
   const GROUPS = ['A', 'B', 'C', 'D', 'E'];
   const GROUP_COLORS = { A: '#9fdcc3', B: '#f6c796', C: '#a9c6f4', D: '#e3b0ea', E: '#f4a3b8' };
+  const GROUP_TITLES = {
+    A: 'Przygotowanie ruchowe',
+    B: 'Rozgrzewka',
+    C: 'Część główna dla góry ciała i akcesoria dla dołu',
+    D: 'Część główna dla dołu ciała i akcesoria dla góry',
+    E: 'Część akcesoryjna i izolowana'
+  };
 
   // How the day went, 1 (worst) to 3 (best); every scale is optional.
   // Energy is a battery, sleep a moon filling up, food a plate with slices.
@@ -1498,6 +1511,7 @@
   function renderExercises() {
     renderingAll = true;
     exercisesEl.innerHTML = '';
+    headSignature = null;
     const training = currentTraining();
     $('newNameBox').classList.toggle('hidden', !isNewTraining());
     if (training) {
@@ -1516,7 +1530,31 @@
     loadWellness(training);
   }
 
+  // A heading in front of every run of cards of one block (A "Przygotowanie ruchowe", B "Rozgrzewka" …).
+  let headSignature = null;
+  function syncSectionHeads() {
+    const cards = [...exercisesEl.querySelectorAll('.exercise')];
+    const groups = cards.map((card) => (GROUPS.includes(card.dataset.group) ? card.dataset.group : ''));
+    const signature = groups.join('|') + '#' + exercisesEl.querySelectorAll('.section-head').length;
+    if (signature === headSignature) return;
+    exercisesEl.querySelectorAll('.section-head').forEach((head) => head.remove());
+    let previous = null;
+    cards.forEach((card, index) => {
+      const group = groups[index];
+      if (group && group !== previous) {
+        const head = document.createElement('div');
+        head.className = 'section-head';
+        head.style.setProperty('--c', GROUP_COLORS[group]);
+        head.innerHTML = '<span class="letter">' + group + '</span><span class="title">' + GROUP_TITLES[group] + '</span>';
+        exercisesEl.insertBefore(head, card);
+      }
+      previous = group;
+    });
+    headSignature = groups.join('|') + '#' + exercisesEl.querySelectorAll('.section-head').length;
+  }
+
   function refresh() {
+    syncSectionHeads();
     exercisesEl.querySelectorAll('.exercise').forEach(updateCard);
   }
 
@@ -2003,6 +2041,7 @@
       const card = chip.closest('.exercise');
       applyGroup(card, card.dataset.group === chip.dataset.group ? '' : chip.dataset.group);
       autoNumber(card);
+      syncSectionHeads();
       pop(chip);
       return;
     }
@@ -2018,7 +2057,9 @@
 
     if (target.closest('.done-btn')) {
       const card = target.closest('.exercise');
-      const next = card.nextElementSibling && card.nextElementSibling.classList.contains('exercise') ? card.nextElementSibling : $('addExercise');
+      let following = card.nextElementSibling;
+      while (following && !following.classList.contains('exercise')) following = following.nextElementSibling;
+      const next = following || $('addExercise');
       pop(target.closest('.done-btn'));
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       next.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: next === $('addExercise') ? 'center' : 'start' });
