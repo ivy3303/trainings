@@ -137,6 +137,12 @@
   .groups { display: grid; grid-template-columns: auto repeat(5, minmax(0, 1fr)) 58px; gap: 6px; align-items: center; margin-bottom: 10px; }
   .code-input { height: 40px; padding: 0 4px; text-align: center; font-weight: 700; }
   .groups-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding-right: 2px; }
+  .insert-gap { display:flex; align-items:center; gap:10px; margin:-4px 6px 10px; }
+  .insert-gap::before, .insert-gap::after { content:''; flex:1; height:1px; background:linear-gradient(90deg, transparent, rgba(160,175,255,.38)); }
+  .insert-gap::after { background:linear-gradient(270deg, transparent, rgba(160,175,255,.38)); }
+  .insert-btn { flex:none; width:26px; height:26px; min-height:0; padding:0; border-radius:50%; font-size:1.1rem; font-weight:600; line-height:1; color:var(--muted);
+    background:transparent; border:1px solid var(--line); opacity:.6; transition:opacity .2s, background-color .2s, color .2s; }
+  .insert-btn:hover, .insert-btn:active { opacity:1; color:var(--text); background:rgba(255,255,255,.08); }
   .section-head { display:flex; align-items:center; gap:12px; margin:26px 2px 12px; --c:var(--line); }
   .section-head:first-child { margin-top:6px; }
   .section-head .letter { flex:none; width:34px; height:34px; border-radius:12px; display:grid; place-items:center; font-weight:800; font-size:1.05rem;
@@ -403,6 +409,8 @@
   .name-sheet-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
   .name-sheet-head h2 { margin:0 0 0 4px; font-size:1.15rem; font-weight:700; color:var(--text); }
   .name-close { flex:none; width:42px; height:42px; padding:0; border-radius:50%; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.2); color:var(--muted); font-size:1.1rem; }
+  .name-dialog.notes-mode #nameInput { min-height:240px; font-size:1.1rem; font-weight:500; line-height:1.45; }
+  #notes { cursor:pointer; }
   #nameInput { display:block; width:100%; height:auto; min-height:150px; margin:16px 0 12px; padding:16px 20px; box-sizing:border-box; border-radius:20px; font-size:1.35rem; line-height:1.35; font-weight:700; font-family:inherit; resize:none; }
   .name-suggest { display:flex; flex-wrap:wrap; gap:8px; margin:0 0 14px; }
   .name-suggest:empty { display:none; }
@@ -515,7 +523,7 @@
 
     <div class="card pair">
       <label for="notes" class="card-title">Notatka do całego treningu</label>
-      <textarea id="notes" placeholder="Ogólne wrażenia, plan na następny raz…"></textarea>
+      <textarea id="notes" readonly placeholder="Dotknij, aby dopisać ogólne wrażenia, plan na następny raz…" aria-label="Notatka do całego treningu — dotknij, aby zmienić"></textarea>
     </div>
 
     <div class="card extras pair">
@@ -879,12 +887,18 @@
 
     // Suggestions for exercise names come from every training in the sheet.
     const names = new Set();
-    trainings.forEach((t) => t.exercises.forEach((e) => names.add(e.name)));
+    const blocksOf = {};
+    trainings.forEach((t) => t.exercises.forEach((e) => {
+      names.add(e.name);
+      const letter = ((e.code || e.group || '').charAt(0) || '').toUpperCase();
+      if (letter) (blocksOf[e.name] = blocksOf[e.name] || new Set()).add(letter);
+    }));
     const list = $('exerciseNames');
     list.innerHTML = '';
     [...names].sort().forEach((n) => {
       const option = document.createElement('option');
       option.value = n;
+      option.dataset.blocks = blocksOf[n] ? [...blocksOf[n]].join('') : '';
       list.appendChild(option);
     });
   }
@@ -1115,6 +1129,41 @@
     input.classList.remove('invalid');
   }
 
+  const slotNumber = (code) => { const m = /^([A-Z])(\d+)/.exec(code || ''); return m ? { letter: m[1], number: Number(m[2]) } : null; };
+  const shiftCode = (code, by) => (code || '').replace(/^([A-Z])(\d+)/, (all, letter, digits) => letter + (Number(digits) + by));
+
+  // The "+" under a tile: a new exercise right after it. In A1 + A2 a new one becomes A2 and the old A2 moves to A3.
+  function insertBelow(card) {
+    const source = slotNumber(cardCode(card));
+    const added = createExercise(null, 0, card._gap);
+    if (source) {
+      const number = source.number + 1;
+      exercisesEl.querySelectorAll('.exercise').forEach((other) => {
+        if (other === added) return;
+        const own = slotNumber(cardCode(other));
+        if (!own || own.letter !== source.letter || own.number < number) return;
+        other._variants.forEach((v) => { if (v && v.code) v.code = shiftCode(v.code, 1); });
+        if (other._slot) other._slot = shiftCode(other._slot, 1);
+        const input = other.querySelector('.code-input');
+        input.value = input.value.replace(/^\d+/, (digits) => String(Number(digits) + 1));
+      });
+      applyGroup(added, source.letter);
+      added.querySelector('.code-input').value = String(number);
+    } else if (card.dataset.group) {
+      applyGroup(added, card.dataset.group);
+      autoNumber(added);
+    }
+    refresh();
+    added.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
+  }
+  exercisesEl.addEventListener('click', (event) => {
+    const button = event.target.closest('.insert-btn');
+    if (!button) return;
+    const gap = button.closest('.insert-gap');
+    const card = [...exercisesEl.querySelectorAll('.exercise')].find((c) => c._gap === gap);
+    if (card) { pop(button); insertBelow(card); }
+  });
+
   // The variant letter is filled in by itself and stays editable, but never equals another alternative's.
   function fixCodeInput(card) {
     const input = card.querySelector('.code-input');
@@ -1247,7 +1296,7 @@
     updateSwap(card);
   }
 
-  function createExercise(variants, startIndex) {
+  function createExercise(variants, startIndex, afterGap) {
     let list = variants && variants.length ? variants.slice() : [null];
     // several exercises in one section are 1a, 1b …: a code without a letter counts as "a"
     if (list.length > 1) {
@@ -1259,14 +1308,14 @@
     card._index = startIndex || 0;
     card._slot = slotOf(list[0] && list[0].code);
     card.innerHTML =
+      '<div class="groups" role="group" aria-label="Blok ćwiczenia"><span class="groups-label">Blok</span>' +
+        GROUPS.map((g) => '<button type="button" class="group-chip" data-group="' + g + '" style="--c:' + GROUP_COLORS[g] + '">' + g + '</button>').join('') +
+        '<input type="text" class="code-input" inputmode="text" autocapitalize="none" maxlength="3" placeholder="nr" aria-label="Numer w bloku i litera wariantu, np. 1 albo 1a">' +
+      '</div>' +
       '<div class="exercise-head">' +
         '<input type="text" class="name" readonly list="exerciseNames" placeholder="Nazwa ćwiczenia" aria-label="Nazwa ćwiczenia — dotknij, aby zmienić">' +
         '<button type="button" class="swap" title="Zmień ćwiczenie">' + SWAP_ICON + '<span class="swap-count">1</span></button>' +
         '<button type="button" class="remove-exercise" title="Pomiń to ćwiczenie" aria-label="Pomiń to ćwiczenie">✕</button>' +
-      '</div>' +
-      '<div class="groups" role="group" aria-label="Blok ćwiczenia"><span class="groups-label">Blok</span>' +
-        GROUPS.map((g) => '<button type="button" class="group-chip" data-group="' + g + '" style="--c:' + GROUP_COLORS[g] + '">' + g + '</button>').join('') +
-        '<input type="text" class="code-input" inputmode="text" autocapitalize="none" maxlength="3" placeholder="nr" aria-label="Numer w bloku i litera wariantu, np. 1 albo 1a">' +
       '</div>' +
       '<p class="prev"></p>' +
       '<div class="segmented">' +
@@ -1299,6 +1348,7 @@
         });
         return;
       }
+      card._gap.remove();
       card.remove();
       refresh();
     });
@@ -1332,7 +1382,13 @@
     });
 
     loadVariant(card, list[card._index]);
-    exercisesEl.appendChild(card);
+    // a subtle "+" under every tile adds an exercise right below it
+    const gap = document.createElement('div');
+    gap.className = 'insert-gap';
+    gap.innerHTML = '<button type="button" class="insert-btn" title="Dodaj ćwiczenie poniżej" aria-label="Dodaj ćwiczenie poniżej">+</button>';
+    card._gap = gap;
+    exercisesEl.insertBefore(card, afterGap ? afterGap.nextSibling : null);
+    exercisesEl.insertBefore(gap, card.nextSibling);
     const delay = renderingAll ? Math.min(exercisesEl.children.length - 1, 8) * 60 : 0;
     animate(card, [{ opacity: 0, transform: 'translateY(22px) scale(0.985)' }, { opacity: 1, transform: 'none' }], { duration: 500, delay });
     return card;
@@ -2139,17 +2195,43 @@
   // ---------- exercise name window ----------
 
   let nameCard = null;
+  let notesOpen = false;
   // Names already used in this sheet, as chips under the text field; a tap copies one into the field.
   function renderNameSuggestions() {
     const box = $('nameSuggest');
-    const typed = $('nameInput').value.trim().toLowerCase();
-    const all = [...document.querySelectorAll('#exerciseNames option')].map((o) => o.value);
-    const picks = all.filter((n) => n.toLowerCase() !== typed && (!typed || n.toLowerCase().includes(typed))).slice(0, 6);
     box.textContent = '';
-    picks.forEach((name) => {
+    if (notesOpen) return;
+    const typed = $('nameInput').value.trim().toLowerCase();
+    // with a block chosen on the tile only the exercises of that block are suggested, otherwise a few from every block
+    const block = nameCard && GROUPS.includes(nameCard.dataset.group) ? nameCard.dataset.group : '';
+    const matches = [...document.querySelectorAll('#exerciseNames option')]
+      .map((o) => ({ name: o.value, blocks: o.dataset.blocks || '' }))
+      .filter((o) => o.name.toLowerCase() !== typed && (!typed || o.name.toLowerCase().includes(typed)) && (!block || o.blocks.includes(block)));
+    const limit = block || typed ? 12 : 10;
+    let picks = [];
+    if (block) {
+      picks = matches.slice(0, limit).map((o) => ({ name: o.name, group: block }));
+    } else {
+      const buckets = {};
+      matches.forEach((o) => {
+        const group = (o.blocks.match(/[A-E]/) || [''])[0];
+        (buckets[group] = buckets[group] || []).push(o);
+      });
+      for (let round = 0; round < 4 && picks.length < limit; round += 1) {
+        [...GROUPS, ''].forEach((group) => {
+          const o = (buckets[group] || [])[round];
+          if (o && picks.length < limit) picks.push({ name: o.name, group });
+        });
+      }
+    }
+    picks.forEach(({ name, group }) => {
       const chip = document.createElement('button');
       chip.type = 'button';
       chip.textContent = name;
+      if (group && GROUP_COLORS[group]) {
+        chip.style.borderColor = GROUP_COLORS[group];
+        chip.style.background = 'color-mix(in srgb, ' + GROUP_COLORS[group] + ' 16%, transparent)';
+      }
       box.appendChild(chip);
     });
   }
@@ -2162,8 +2244,24 @@
   });
   $('nameInput').addEventListener('input', renderNameSuggestions);
 
+  function openNotesDialog() {
+    if (nameCard || notesOpen) return;
+    notesOpen = true;
+    const input = $('nameInput');
+    $('nameDialog').classList.add('notes-mode');
+    $('nameDialogTitle').textContent = 'Notatka do całego treningu';
+    input.placeholder = 'Ogólne wrażenia, plan na następny raz…';
+    input.value = $('notes').value;
+    renderNameSuggestions();
+    $('nameDialog').classList.remove('hidden');
+    document.body.classList.add('locked');
+    setTimeout(() => {
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    }, 30);
+  }
   function openNameDialog(card) {
-    if (nameCard || !card) return;
+    if (nameCard || notesOpen || !card) return;
     nameCard = card;
     const input = $('nameInput');
     input.value = card.querySelector('.name').value;
@@ -2176,6 +2274,25 @@
     }, 30);
   }
   function closeNameDialog(apply) {
+    if (notesOpen) {
+      notesOpen = false;
+      if (apply) {
+        const notes = $('notes');
+        const value = $('nameInput').value.trim();
+        if (value !== notes.value) {
+          notes.value = value;
+          notes.dispatchEvent(new Event('input', { bubbles: true }));
+          notes.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      }
+      $('nameDialog').classList.remove('notes-mode');
+      $('nameDialogTitle').textContent = 'Nazwa ćwiczenia';
+      $('nameInput').placeholder = 'Wpisz nazwę ćwiczenia';
+      $('nameDialog').classList.add('hidden');
+      document.body.classList.remove('locked');
+      if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+      return;
+    }
     if (!nameCard) return;
     const card = nameCard;
     nameCard = null;
@@ -2201,15 +2318,17 @@
   $('nameDone').addEventListener('click', () => closeNameDialog(true));
   $('nameClose').addEventListener('click', () => closeNameDialog(false));
   $('nameInput').addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') { event.preventDefault(); closeNameDialog(true); }
+    if (event.key === 'Enter' && !notesOpen) { event.preventDefault(); closeNameDialog(true); }
     if (event.key === 'Escape') { event.preventDefault(); closeNameDialog(false); }
   });
+
+  $('notes').addEventListener('focusin', openNotesDialog);
+  $('notes').addEventListener('click', openNotesDialog);
 
   $('addExercise').addEventListener('click', () => {
     const card = createExercise();
     refresh();
     card.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
-    openNameDialog(card);
   });
 
   async function init() {
