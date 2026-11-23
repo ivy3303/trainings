@@ -137,6 +137,10 @@
   .groups { display: grid; grid-template-columns: auto repeat(5, minmax(0, 1fr)) 58px; gap: 6px; align-items: center; margin-bottom: 10px; }
   .code-input { height: 40px; padding: 0 4px; text-align: center; font-weight: 700; }
   .groups-label { font-size: 0.85rem; font-weight: 600; color: var(--muted); padding-right: 2px; }
+  .draft-notice { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:0 0 14px; padding:10px 12px 10px 16px; border-radius:18px; font-size:.92rem; line-height:1.35;
+    color:var(--text); background:rgba(79,208,154,.10); border:1px solid rgba(79,208,154,.4); }
+  .draft-notice.hidden { display:none; }
+  .draft-notice button { flex:none; height:auto; min-height:34px; padding:6px 14px; border-radius:999px; font-size:.88rem; font-weight:700; color:var(--text); background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.22); }
   .insert-gap { display:flex; align-items:center; gap:10px; margin:-4px 6px 10px; }
   .insert-gap::before, .insert-gap::after { content:''; flex:1; height:1px; background:linear-gradient(90deg, transparent, rgba(160,175,255,.38)); }
   .insert-gap::after { background:linear-gradient(270deg, transparent, rgba(160,175,255,.38)); }
@@ -487,6 +491,10 @@
     <code>SCRIPT_URL</code> w pliku index.html, żeby zapisywanie i wczytywanie działało.
   </div>
   <div id="status" class="notice" role="status"></div>
+  <div id="draftNotice" class="draft-notice hidden" role="status">
+    <span id="draftText"></span>
+    <button type="button" id="draftDiscard">Zacznij od nowa</button>
+  </div>
 
   <form id="form" autocomplete="off">
     <div class="card">
@@ -671,7 +679,8 @@
   let trainings = [];
 
   const isConfigured = () => !SCRIPT_URL.startsWith('PASTE_');
-  const today = () => new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
+  const dateOf = (d) => d.toLocaleDateString('sv-SE'); // YYYY-MM-DD in local time
+  const today = () => dateOf(new Date());
 
   // ---------- motion ----------
 
@@ -1584,6 +1593,7 @@
     renderingAll = false;
     refresh();
     loadWellness(training);
+    rebaseDraft();
   }
 
   // A heading in front of every run of cards of one block (A "Przygotowanie ruchowe", B "Rozgrzewka" …).
@@ -2036,6 +2046,7 @@
       $('newName').value = '';
       $('date').value = today();
       renderExercises();
+      clearDraft();
       let message = 'Zapisano w zakładce „' + result.sheet + '” (' + exercises.length + ' ćw.).';
       if (result.emailed) message += ' Wysłano podsumowanie na ' + result.emailed + ' adr.';
       if (result.emailError) message += ' Maila nie udało się wysłać: ' + result.emailError;
@@ -2331,6 +2342,116 @@
     card.scrollIntoView({ behavior: reduceMotion.matches ? 'auto' : 'smooth', block: 'center' });
   });
 
+  // ---------- draft: what is typed survives a closed or discarded page until the training is saved ----------
+  const DRAFT_KEY = 'trainingDraft';
+  const DRAFT_MAX_AGE = 3 * 24 * 3600 * 1000;
+  let draftReady = false;
+  let draftTimer = null;
+  let draftBaseline = '';
+
+  // like snapshot(), but blank values stay blank
+  function draftVariant(card) {
+    const c = readCard(card);
+    const timed = c.mode === 'time';
+    const value = (n) => (Number.isNaN(n) ? null : n);
+    return {
+      name: c.name, code: c.code, mode: c.mode, note: c.note, fromForm: true,
+      sets: c.sets.map((set) => ({
+        reps: timed ? 0 : value(set.value),
+        seconds: timed ? value(set.value) : 0,
+        weight: set.weight === 'BW' ? 'BW' : value(set.weight)
+      }))
+    };
+  }
+  function buildDraft() {
+    return {
+      v: 1,
+      training: trainingSelect.value,
+      newName: $('newName').value,
+      date: $('date').value,
+      notes: $('notes').value,
+      moodNote: $('moodNote').value,
+      wellness,
+      cards: [...exercisesEl.querySelectorAll('.exercise')].map((card) => ({
+        variants: card._variants.map((variant, i) => (i === card._index ? draftVariant(card) : variant)),
+        index: card._index
+      }))
+    };
+  }
+  function rebaseDraft() {
+    clearTimeout(draftTimer);
+    try { draftBaseline = JSON.stringify(buildDraft()); } catch (e) { draftBaseline = ''; }
+  }
+  function writeDraft() {
+    clearTimeout(draftTimer);
+    if (!draftReady || renderingAll) return;
+    try {
+      const draft = buildDraft();
+      if (JSON.stringify(draft) === draftBaseline) localStorage.removeItem(DRAFT_KEY); // nothing changed yet
+      else localStorage.setItem(DRAFT_KEY, JSON.stringify(Object.assign({ at: Date.now() }, draft)));
+    } catch (e) { /* storage full or blocked: the draft is a convenience only */ }
+  }
+  function scheduleDraft() {
+    if (!draftReady || renderingAll) return;
+    clearTimeout(draftTimer);
+    draftTimer = setTimeout(writeDraft, 400);
+  }
+  function clearDraft() {
+    clearTimeout(draftTimer);
+    try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    $('draftNotice').classList.add('hidden');
+  }
+  ['input', 'change', 'click', 'pointerup'].forEach((type) => form.addEventListener(type, scheduleDraft, true));
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') writeDraft(); });
+  window.addEventListener('pagehide', writeDraft);
+
+  function restoreDraft() {
+    let draft = null;
+    try { draft = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) { draft = null; }
+    if (!draft) return;
+    const option = draft.v === 1 && Array.isArray(draft.cards) && Date.now() - draft.at < DRAFT_MAX_AGE
+      ? [...trainingSelect.options].find((o) => o.value === draft.training) : null;
+    if (!option) { clearDraft(); return; }
+    trainingSelect.value = draft.training;
+    renderingAll = true;
+    exercisesEl.innerHTML = '';
+    headSignature = null;
+    $('newNameBox').classList.toggle('hidden', !isNewTraining());
+    if (draft.cards.length) draft.cards.forEach((c) => createExercise(c.variants, c.index));
+    else createExercise();
+    renderingAll = false;
+    $('newName').value = draft.newName || '';
+    const at = new Date(draft.at);
+    const sameDay = at.toDateString() === new Date().toDateString();
+    const wasToday = draft.date === dateOf(at);
+    if (draft.date && !wasToday) $('date').value = draft.date; // a date picked by hand is kept, "today" stays today
+    $('notes').value = draft.notes || '';
+    $('moodNote').value = draft.moodNote || '';
+    wellness = draft.wellness || {};
+    updateMood();
+    refresh();
+    const hh = String(at.getHours()).padStart(2, '0') + ':' + String(at.getMinutes()).padStart(2, '0');
+    $('draftText').textContent = 'Przywrócono niezapisane dane z ' + (sameDay ? 'dziś ' : dateOf(at) + ' ') + hh + '.';
+    $('draftDiscard').textContent = 'Zacznij od nowa';
+    $('draftNotice').classList.remove('hidden');
+  }
+  let discardTimer = null;
+  $('draftDiscard').addEventListener('click', () => {
+    const button = $('draftDiscard');
+    if (!discardTimer) {
+      button.textContent = 'Na pewno? Dotknij jeszcze raz';
+      discardTimer = setTimeout(() => { discardTimer = null; button.textContent = 'Zacznij od nowa'; }, 4000);
+      return;
+    }
+    clearTimeout(discardTimer);
+    discardTimer = null;
+    clearDraft();
+    $('newName').value = '';
+    $('date').value = today();
+    $('notes').value = '';
+    renderExercises();
+  });
+
   async function init() {
     $('date').value = today();
     if (!isConfigured()) $('configWarning').classList.add('show');
@@ -2357,6 +2478,8 @@
     renderMood();
     renderTrainingSelect(remembered);
     renderExercises();
+    restoreDraft();
+    draftReady = true;
     try {
       $('emails').value = localStorage.getItem(EMAILS_KEY) || '';
       $('pin').value = localStorage.getItem(PIN_KEY) || '';
